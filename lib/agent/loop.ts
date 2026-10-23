@@ -338,7 +338,7 @@ function describeError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) return "The clerk can't reach the model: check ANTHROPIC_API_KEY.";
   if (err instanceof Anthropic.RateLimitError) return "The clerk is swamped (rate limited). Try again in a moment.";
   if (err instanceof Anthropic.APIError) return `The model returned an error (${err.status ?? "network"}). Try again.`;
-  if (err instanceof Error && /api ?key|apiKey|authToken/i.test(err.message)) return "The clerk can't reach the model: set ANTHROPIC_API_KEY in .env.local.";
+  if (err instanceof Error && /api ?key|apiKey|authToken/i.test(err.message)) return "The clerk can't reach the model: set ANTHROPIC_API_KEY (in .env.local locally, or in the Vercel project settings).";
   console.error("[agent]", err);
   return "Something went wrong behind the counter. Try again.";
 }
