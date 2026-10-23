@@ -1,7 +1,7 @@
 // Shared types used by the store UI, the agent loop, and the API routes.
 
 export type Format = "hardcover" | "paperback" | "ebook";
-export type SectionId = "vonnegut" | "scifi" | "classics" | "scitech";
+export type SectionId = "vonnegut" | "scifi" | "classics" | "scitech" | "music";
 
 export interface Book {
   id: string;

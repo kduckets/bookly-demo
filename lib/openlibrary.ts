@@ -51,7 +51,7 @@ const lastName = (a: string) => normalize(a).split(" ").pop() ?? "";
 /**
  * Is this Open Library work one we already stock?
  * - Exact title (subtitle dropped) and a matching author surname, or
- * - exact distinctive title alone (10+ characters; author names vary by script), or
+ * - exact distinctive title alone (two or more words and 10+ characters; author names vary by script), or
  * - the same title ignoring a leading article, or a longer edition title, with the surname matching.
  * "The Invisible Man" (Wells) must not match "Invisible Man" (Ellison).
  */
@@ -62,7 +62,7 @@ export function catalogMatch(title: string, authors: string[]): string | null {
   const b = CATALOG.find((c) => {
     const ct = normalize(c.title.split(":")[0]);
     const surnameOk = surnames.includes(lastName(c.author));
-    if (ot === ct) return surnameOk || ct.length >= 10 || surnames.length === 0;
+    if (ot === ct) return surnameOk || (ct.length >= 10 && ct.includes(" ")) || surnames.length === 0;
     return surnameOk && (noArticle(ot) === noArticle(ct) || ot.startsWith(ct + " "));
   });
   return b?.id ?? null;

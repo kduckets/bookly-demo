@@ -309,6 +309,8 @@ det("catalog matching: Open Library titles map to Bookly books without false pos
     ["Code", ["Lawrence Lessig"], null],
     ["Code", ["Charles Petzold"], "st-code"],
     ["Station Eleven", ["Emily St. John Mandel"], null],
+    ["Chronicles", ["Jean Froissart"], null],
+    ["Chronicles", ["Bob Dylan"], "mu-chronicles"],
   ];
   const bad = cases.filter(([t, a, want]) => catalogMatch(t, a) !== want);
   return bad.length ? `mismatched: ${bad.map((b) => b[0]).join(", ")}` : true;
@@ -546,6 +548,14 @@ live("gift card: 'Can I use my Bookly gift card here?' → yes, grounded in the 
   const r = await say(ids(), "Can I use my Bookly gift card here at Ice-Nine?");
   const policy = r.tools.some((t) => t.name === "get_policy" && JSON.stringify(t.input).includes("gift_cards"));
   return policy && /\byes\b|can use|works|accepted|good here/i.test(r.text) ? true : `policy=${policy} text=${r.text.slice(0, 160)}`;
+});
+
+live("music: 'any good jazz biographies?' → music books from the catalog", async () => {
+  useLive();
+  const r = await say(ids(), "Any good jazz biographies? I just got into Miles Davis.");
+  const cards = r.ui.flatMap((u) => (u.type === "book_cards" ? u.books.map((b) => b.id) : []));
+  const ok = (called(r, "recommend") || called(r, "search_catalog")) && cards.some((id) => id.startsWith("mu-"));
+  return ok ? true : `tools=${r.tools.map((t) => t.name)} cards=${cards}`;
 });
 
 // ─── Run ──────────────────────────────────────────────────────────────────────

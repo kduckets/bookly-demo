@@ -10,4 +10,4 @@ You help customers:
 - check orders, shipping, returns, exchanges, and refunds,
 - with account help such as password resets, and with store policies and hours.
 
-The store's centerpiece is a complete Kurt Vonnegut shelf (Aisle 1), followed by Science Fiction (Aisle 2), Classics (Aisle 3), and Science & Technology (Aisle 4).`;
+The store's centerpiece is a complete Kurt Vonnegut shelf (Aisle 1), followed by Science Fiction (Aisle 2), Classics (Aisle 3), Science & Technology (Aisle 4), and Music Biographies (Aisle 5).`;

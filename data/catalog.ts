@@ -38,6 +38,14 @@ export const SECTIONS: { id: SectionId; name: string; label: string; genre: stri
     aisle: 4,
     blurb: "How the universe works, and how we keep finding out.",
   },
+  {
+    id: "music",
+    name: "Music Biographies",
+    label: "Music Biographies",
+    genre: "Music Biographies",
+    aisle: 5,
+    blurb: "Memoirs and biographies of the people behind the records.",
+  },
 ];
 
 const ALL: Format[] = ["hardcover", "paperback", "ebook"];
@@ -266,6 +274,48 @@ bk("scitech", "st-human-compatible", "Human Compatible", "Stuart Russell", 2019,
   "An AI researcher argues that machines should be built to stay uncertain about what we want, and explains why that matters.", { related: ["st-alignment-problem", "sf-moon-is-a-harsh-mistress"] });
 bk("scitech", "st-henrietta-lacks", "The Immortal Life of Henrietta Lacks", "Rebecca Skloot", 2010, ["medicine", "biography"], ["medicine", "race", "ethics", "family", "science"], 18.0,
   "The woman whose cells became a pillar of modern research without her knowledge, and her family's long search for answers.", { related: ["st-emperor-of-all-maladies", "st-the-gene"] });
+
+// ─── Aisle 5: Music Biographies ───────────────────────────────────────────────
+bk("music", "mu-just-kids", "Just Kids", "Patti Smith", 2010, ["memoir"], ["music", "art", "friendship", "new york", "youth", "poetry"], 17.0,
+  "Two broke young artists in late-sixties New York promise to look after each other, and keep that promise long after they stop being a couple.", { related: ["mu-girl-in-a-band", "mu-face-it", "mu-chronicles"] });
+bk("music", "mu-chronicles", "Chronicles: Volume One", "Bob Dylan", 2004, ["memoir"], ["music", "fame", "new york", "songwriting", "memory"], 17.0,
+  "A famously private songwriter skips around his own story, lingering on cold apartments, borrowed records, and how a song gets made.", { related: ["mu-just-kids", "mu-testimony", "mu-born-to-run"] });
+bk("music", "mu-life", "Life", "Keith Richards", 2010, ["memoir"], ["music", "rock", "fame", "addiction", "friendship"], 19.0,
+  "A guitarist who was expected to die young explains, cheerfully and in detail, how he didn't.", { related: ["mu-room-full-of-mirrors", "mu-scar-tissue", "mu-shout"] });
+bk("music", "mu-born-to-run", "Born to Run", "Bruce Springsteen", 2016, ["memoir"], ["music", "family", "work", "depression", "america"], 20.0,
+  "A singer from a small New Jersey town traces his songs back to his father's kitchen table, and admits to the dark spells behind the stadium shows.", { related: ["mu-chronicles", "mu-testimony", "cl-grapes-of-wrath"] });
+bk("music", "mu-scar-tissue", "Scar Tissue", "Anthony Kiedis", 2004, ["memoir"], ["music", "addiction", "recovery", "fame", "los angeles"], 18.0,
+  "A frontman's unvarnished account of a band's rise and the addiction that kept nearly taking him out of it.", { related: ["mu-life", "mu-heavier-than-heaven"] });
+bk("music", "mu-miles", "Miles: The Autobiography", "Miles Davis", 1989, ["memoir", "jazz"], ["music", "jazz", "race", "reinvention", "genius"], 19.0,
+  "The trumpeter talks through five decades of reinventing jazz, sparing no one, least of all himself.", { related: ["mu-thelonious-monk", "mu-beneath-the-underdog", "mu-lady-sings-the-blues"] });
+bk("music", "mu-beneath-the-underdog", "Beneath the Underdog", "Charles Mingus", 1971, ["memoir", "jazz"], ["music", "jazz", "race", "identity", "anger"], 17.0,
+  "A bassist and composer writes his life as a wild, half-invented novel about race, music, and wanting to be seen whole.", { formats: PB_EB, related: ["mu-miles", "cl-invisible-man"] });
+bk("music", "mu-lady-sings-the-blues", "Lady Sings the Blues", "Billie Holiday", 1956, ["memoir", "jazz"], ["music", "jazz", "race", "addiction", "survival"], 15.0,
+  "A singer tells her own story in her own clipped, unsentimental voice, from a hard Baltimore childhood to the top of the bill and the courtroom.", { formats: PB_EB, related: ["mu-respect", "mu-miles"] });
+bk("music", "mu-girl-in-a-band", "Girl in a Band", "Kim Gordon", 2015, ["memoir"], ["music", "art", "gender", "new york", "marriage"], 17.0,
+  "A bassist and artist looks back on thirty years in an influential noise band, and on what it meant to be the woman on that stage.", { related: ["mu-hunger-makes-me", "mu-just-kids", "mu-face-it"] });
+bk("music", "mu-hunger-makes-me", "Hunger Makes Me a Modern Girl", "Carrie Brownstein", 2015, ["memoir"], ["music", "punk", "identity", "gender", "performance"], 17.0,
+  "A guitarist from the Pacific Northwest punk scene writes about fandom, the need to be heard, and the cost of living on stage.", { related: ["mu-girl-in-a-band", "mu-face-it"] });
+bk("music", "mu-coal-miners-daughter", "Coal Miner's Daughter", "Loretta Lynn", 1976, ["memoir", "country"], ["music", "country", "family", "poverty", "marriage"], 15.0,
+  "A country singer from a Kentucky hollow tells how a teenage bride with a cheap guitar ended up writing songs no radio station could ignore.", { formats: PB_EB, related: ["mu-born-to-run", "mu-respect"] });
+bk("music", "mu-testimony", "Testimony", "Robbie Robertson", 2016, ["memoir"], ["music", "rock", "friendship", "identity", "road"], 19.0,
+  "A guitarist and songwriter recalls backing a famous folk singer's turn to electric, and the brotherhood and breakup of his own band.", { related: ["mu-chronicles", "mu-born-to-run"] });
+bk("music", "mu-kill-em-and-leave", "Kill 'Em and Leave", "James McBride", 2016, ["biography"], ["music", "soul", "race", "america", "money"], 18.0,
+  "A novelist goes looking for the real man behind a soul legend, and finds a story about the South, money, and who gets remembered.", { related: ["mu-respect", "mu-last-train-to-memphis"] });
+bk("music", "mu-last-train-to-memphis", "Last Train to Memphis", "Peter Guralnick", 1994, ["biography"], ["music", "rock", "fame", "youth", "america"], 22.0,
+  "The first half of a rock idol's life, told with care from a shy Memphis teenager's first recording to the edge of superstardom.", { related: ["mu-kill-em-and-leave", "mu-shout"] });
+bk("music", "mu-shout", "Shout!", "Philip Norman", 1981, ["biography"], ["music", "rock", "fame", "friendship", "britain"], 20.0,
+  "A biography of four young men from Liverpool and the strange decade in which they became the most famous people alive.", { related: ["mu-life", "mu-last-train-to-memphis"] });
+bk("music", "mu-room-full-of-mirrors", "Room Full of Mirrors", "Charles R. Cross", 2005, ["biography"], ["music", "rock", "genius", "fame", "death"], 18.0,
+  "The short life of a guitarist who reinvented the instrument, from a lonely Seattle childhood to a few blazing years at the top.", { related: ["mu-heavier-than-heaven", "mu-life"] });
+bk("music", "mu-heavier-than-heaven", "Heavier Than Heaven", "Charles R. Cross", 2001, ["biography"], ["music", "grunge", "fame", "addiction", "depression"], 18.0,
+  "A careful biography of a reluctant rock star from a small Washington town, built from his own journals and the people who knew him.", { related: ["mu-room-full-of-mirrors", "mu-scar-tissue"] });
+bk("music", "mu-thelonious-monk", "Thelonious Monk", "Robin D. G. Kelley", 2009, ["biography", "jazz"], ["music", "jazz", "genius", "family", "race"], 22.0,
+  "A historian corrects the myth of the eccentric jazz pianist, showing a devoted family man and a rigorous, misunderstood composer.", { related: ["mu-miles", "mu-beneath-the-underdog"] });
+bk("music", "mu-respect", "Respect", "David Ritz", 2014, ["biography", "soul"], ["music", "soul", "gospel", "fame", "family"], 19.0,
+  "A biography of a gospel prodigy turned soul queen, drawing on the family, musicians, and friends who saw what the public didn't.", { related: ["mu-lady-sings-the-blues", "mu-kill-em-and-leave"] });
+bk("music", "mu-face-it", "Face It", "Debbie Harry", 2019, ["memoir"], ["music", "punk", "new york", "fame", "art"], 18.0,
+  "A singer from the downtown New York scene tells how a band from a dirty club stage became a pop phenomenon, with art from her fans throughout.", { related: ["mu-just-kids", "mu-girl-in-a-band"] });
 
 // ─── Assemble: locations, formats, stock, related ──────────────────────────────
 

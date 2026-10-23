@@ -2,7 +2,7 @@
 
 A prototype customer-support agent for **Bookly**, a fictional bookstore company. The storefront is the **Ice-Nine Bookshop**, a niche Bookly shop; orders, gift cards, and policies are Bookly-wide.
 
-Browse books spine-out on the shelves, or ask the clerk. Ask where a book is and the page scrolls to it and pulls it out. Ask for a return or a gift card and the clerk collects what it needs, shows a preview, and acts only after you say yes.
+Browse books spine-out on five shelves (Vonnegut, Science Fiction, Classics, Science & Technology, and Music Biographies), or ask the clerk. Ask where a book is and the page scrolls to it and pulls it out. Ask for a return or a gift card and the clerk collects what it needs, shows a preview, and acts only after you say yes.
 
 The agent loop is hand-written against the Anthropic Messages API. No agent frameworks.
 
@@ -85,7 +85,7 @@ Literary discussion isn't checked, by design. The cost is latency: replies are b
 
 ### Open Library and reader requests
 
-The clerk can look beyond the 93-book catalog with the [Open Library API](https://openlibrary.org/developers/api). `search_open_library` confirms a book and its author. `find_related_books` pulls popular English-language books on the same subjects and splits them into ones Bookly sells and ones it doesn't.
+The clerk can look beyond the 113-book catalog with the [Open Library API](https://openlibrary.org/developers/api). `search_open_library` confirms a book and its author. `find_related_books` pulls popular English-language books on the same subjects and splits them into ones Bookly sells and ones it doesn't.
 
 Open Library results are reference data, not inventory. Code matches each result against the catalog, and only matched titles can be sold. For books we don't carry, the clerk offers to add them to **Reader requests**, a store-wide list at the bottom of the page. It refuses books already in the catalog and allows at most 5 requests per conversation.
 
@@ -166,13 +166,13 @@ Turn on **Show agent trace** in the gear panel to see the pre-check, tool calls,
 - **Open Library:** results tagged sold or not, outages fail softly, catalog matching avoids false positives such as Wells's *The Invisible Man* vs. Ellison's *Invisible Man*, and reader requests de-duplicate and cap.
 - **Output check:** a grounded price passes; an invented price, "60-day returns", or an invented order ID fails; book discussion passes untouched. Through the real loop, a bad reply regenerates once, and one that fails twice is cleaned and counted.
 
-**Live tier** (16 cases, needs `ANTHROPIC_API_KEY` and network). These are scripted conversations against Claude:
+**Live tier** (17 cases, needs `ANTHROPIC_API_KEY` and network). These are scripted conversations against Claude:
 
 - **Finding books:** the shelf highlight, and the ambiguous "Vonnegut war book" getting options and a question.
 - **Orders:** the multi-turn return asking for email and then which order, and the 45-day return being declined.
 - **Guardrails:** off-topic redirect, a hostile persona that can't force a refund, and prompt injection.
 - **Gift cards:** detail collection, and the full preview-then-confirm flow.
-- **Catalog and Open Library:** catalog recommendations, an unstocked book requested only after the customer agrees, and related books.
+- **Catalog and Open Library:** catalog recommendations (including jazz biographies), an unstocked book requested only after the customer agrees, and related books.
 - **Handoffs and cross-shop:** lost-package escalation, the turn-limit handoff, cross-shop return, and the gift card question.
 
 ## Project layout
@@ -196,7 +196,7 @@ lib/
   openlibrary.ts          Open Library client: search, caching, catalog matching
   wanted.ts               reader requests list
 data/
-  catalog.ts              93 books with original descriptions and aisles
+  catalog.ts              113 books in 5 aisles, with original descriptions
   orders.ts               8 seeded edge-case orders
   policies.ts             the only source of policy text
 scripts/eval.ts           the eval suite
@@ -210,5 +210,5 @@ scripts/eval.ts           the eval suite
 - **Single model per role.** One model runs the agent and one runs the pre-check, with no routing by difficulty.
 - **Rate limits are per session,** not per IP or user.
 - **Open Library is an outside dependency.** Its data is crowd-edited, so related results are best-effort. Its guidelines rule out high-traffic commercial use, so production would need its bulk data dumps or a licensed source.
-- **Small catalog.** 93 books, with keyword and theme search rather than embeddings.
+- **Small catalog.** 113 books, with keyword and theme search rather than embeddings.
 - **Generated book art.** Spine and cover colors come from a hash of each book's ID. No real cover art; all descriptions are original.
