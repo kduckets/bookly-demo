@@ -64,7 +64,12 @@ function ShelfRow({ label, books, lit }: { label: string; books: Book[]; lit: st
 
   return (
     <div>
-      <div role="list" aria-label={`${label} shelf`} className="thin-scroll flex items-end gap-1 overflow-x-auto border-b-2 border-stone-300 px-1 pt-8">
+      {/* Back panel, books, then the shelf board with a soft shadow beneath it. */}
+      <div
+        role="list"
+        aria-label={`${label} shelf`}
+        className="thin-scroll flex items-end gap-[3px] overflow-x-auto rounded-t-xl bg-gradient-to-b from-stone-100/80 to-stone-200/50 px-4 pt-10 ring-1 ring-inset ring-stone-200/80"
+      >
         {books.map((b, i) => (
           <div role="listitem" key={b.id} className="flex-none">
             <button
@@ -90,7 +95,16 @@ function ShelfRow({ label, books, lit }: { label: string; books: Book[]; lit: st
             </button>
           </div>
         ))}
+        <Bookend />
       </div>
+      <div aria-hidden className="h-3.5 rounded-b-md border-t border-white/70 bg-gradient-to-b from-stone-300 to-stone-400/80 shadow-[0_12px_16px_-10px_rgba(28,25,23,0.4)]" />
     </div>
+  );
+}
+
+/** A slim, minimal bookend at the end of each row. */
+function Bookend() {
+  return (
+    <div aria-hidden className="ml-3 h-[120px] w-3 flex-none rounded-t-md bg-gradient-to-r from-stone-300 via-stone-400 to-stone-500 shadow-[2px_0_4px_-1px_rgba(28,25,23,0.25)]" />
   );
 }

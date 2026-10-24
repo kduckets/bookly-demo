@@ -1,8 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { StreamEvent, TraceEvent, UIEvent } from "@/lib/types";
 import {
+  HANDOFF_OFFER_LINE,
   LIMITS,
+  acceptsHandoffOffer,
   checkRateLimit,
+  offersPerson,
   clampTurnLimit,
   runPrecheck,
   sanitizePersona,
@@ -13,6 +16,7 @@ import { createSession, getSession, type Session } from "./session";
 import { missingSlots, type Intent } from "./slots";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
 import { openTicket, summaryFromSession } from "./tools/escalation";
+import { maskEmail } from "./tools/util";
 import { resolveFromCustomer } from "./gate";
 import { activeProcedure, changedProceduresBlock, getProcedure, proceduresBlock, procedureSnapshot } from "./procedures";
 import { buildFacts, checkReply, regenerationNote, sanitize, type CheckResult } from "./output-check";
@@ -57,7 +61,9 @@ export const AGENT_MODEL = MODEL;
 
 // ─── One turn ─────────────────────────────────────────────────────────────────
 
-export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
+export async function handleTurn(input: TurnInput, rawEmit: Emit): Promise<void> {
+  // Trace events never show a customer's full email address.
+  const emit: Emit = (e) => rawEmit(e.type === "trace" ? (JSON.parse(maskEmails(JSON.stringify(e))) as StreamEvent) : e);
   const started = Date.now();
   const ui = (event: UIEvent) => emit({ type: "ui", event });
   const trace = (event: TraceEvent) => emit({ type: "trace", event });
@@ -105,6 +111,15 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
   s.transcript.push({ role: "user", text: message });
 
   if (pre.wantsHuman) return forcedHandoff(s, message, "Customer asked for a human", emit, started);
+  // A plain "yes" to the offer we made on the last reply hands off directly, without the model.
+  // The offer lasts one message. A preview awaiting confirmation from that same turn takes precedence.
+  const offer = s.pendingHandoffOffer;
+  s.pendingHandoffOffer = undefined;
+  const previewWaiting = Object.values(s.previews).some((p) => p && p.turn === s.turn - 1);
+  if (offer && offer.turn === s.turn - 1 && !previewWaiting && acceptsHandoffOffer(message)) {
+    trace({ type: "guardrail", rule: "handoff_accepted", detail: `customer said yes to the offer: ${offer.reason}` });
+    return forcedHandoff(s, message, "Customer accepted the offer to talk to a person", emit, started);
+  }
   if (pre.frustrated || pre.label === "abusive") s.frustrationCount += 1;
   if (s.frustrationCount >= LIMITS.frustrationThreshold)
     return forcedHandoff(s, message, "Customer frustrated on repeated messages", emit, started);
@@ -126,12 +141,15 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
   const context = sessionContext(s, pre, { personaChanged, proceduresChanged });
   let usage;
   try {
-    usage = await agentLoop(s, message, context, emit);
+    // A request for recommendations: the output check will insist suggestions come from a lookup.
+    const recommending = pre.intent === "recommend" || /\b(read next|recommend|suggest|what else|what should i read|anything like|similar to)\b/i.test(message);
+    usage = await agentLoop(s, message, context, emit, recommending);
     traceProcedure(s, usage.tools, emit);
   } catch (err) {
     s.turn -= 1; // a failed call shouldn't cost the customer a turn
     s.transcript.pop();
-    emit({ type: "error", message: describeError(err) });
+    const { message: why, setup } = describeError(err);
+    emit(setup ? { type: "error", message: why } : { type: "text", delta: why });
     return done(emit, s);
   }
 
@@ -147,17 +165,26 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
 
 // ─── The tool-use loop ────────────────────────────────────────────────────────
 
-async function agentLoop(s: Session, message: string, context: string, emit: Emit) {
-  client ??= new Anthropic();
+async function agentLoop(s: Session, message: string, context: string, emit: Emit, recommending = false) {
+  // One retry with the SDK's exponential backoff, then a friendly message (see describeError).
+  client ??= new Anthropic({ maxRetries: 1, timeout: 60_000 });
+  s.handoffOfferDue = undefined;
   let turn: Anthropic.Beta.BetaMessageParam[] = userMessage(message, context);
   const usage = { iterations: 0, input: 0, output: 0, cacheRead: 0, tools: [] as string[] };
   const earlierText: string[] = []; // text written alongside tool calls this turn
   let finalText = "";
   let jsonRetries = 0;
   let regenerated = false;
+  let checkingShown = false;
   let cap = LIMITS.maxToolIterations;
 
   for (let i = 0; i <= cap; i++) {
+    // After a tool round, the reply being written is held for the output check. Say so, so the
+    // pause reads as deliberate (the model's wait here is the longest visible pause in a turn).
+    if (i > 0 && !checkingShown) {
+      checkingShown = true;
+      emit({ type: "status", phase: "checking" });
+    }
     const stream = client.beta.messages.stream({
       model: MODEL,
       max_tokens: 16000,
@@ -203,7 +230,7 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
       finalText = [...earlierText, text].filter(Boolean).join("\n\n");
 
       // Output check: every price, ID, availability and policy claim must be grounded.
-      const facts = buildFacts([...s.history, ...turn], s.transcript.filter((t) => t.role === "user").map((t) => t.text));
+      const facts = buildFacts([...s.history, ...turn], s.transcript.filter((t) => t.role === "user").map((t) => t.text), { recommending });
       const result = checkReply(finalText, facts);
       if (result.passed) {
         emitCheck(emit, result, regenerated, false);
@@ -248,6 +275,19 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
     turn.push({ role: "user", content: results });
   }
 
+  // After a policy "no", the reply must offer a person. If the draft doesn't, add the standard line.
+  if (s.handoffOfferDue) {
+    const reason = s.handoffOfferDue;
+    s.handoffOfferDue = undefined;
+    const inReply = offersPerson(finalText);
+    if (!inReply) {
+      finalText = finalText ? `${finalText}\n\n${HANDOFF_OFFER_LINE}` : HANDOFF_OFFER_LINE;
+      const last = [...turn].reverse().find((m) => m.role === "assistant");
+      if (last && Array.isArray(last.content)) (last.content as Anthropic.Beta.BetaContentBlockParam[]).push({ type: "text", text: `\n\n${HANDOFF_OFFER_LINE}` });
+    }
+    s.pendingHandoffOffer = { reason, turn: s.turn };
+    emit({ type: "trace", event: { type: "guardrail", rule: "handoff_offered", detail: inReply ? "offer was in the reply" : "offer appended to the reply" } });
+  }
   if (finalText) emit({ type: "text", delta: finalText });
   commit(s, turn, finalText);
   return usage;
@@ -353,13 +393,17 @@ function done(emit: Emit, s: Session) {
   emit({ type: "done", turn: s.turn, limit: s.turnLimit, locked: s.locked });
 }
 
-function describeError(err: unknown): string {
-  if (err instanceof Anthropic.AuthenticationError) return "The clerk can't reach the model: check ANTHROPIC_API_KEY.";
-  if (err instanceof Anthropic.RateLimitError) return "The clerk is swamped (rate limited). Try again in a moment.";
-  if (err instanceof Anthropic.APIError) return `The model returned an error (${err.status ?? "network"}). Try again.`;
-  if (err instanceof Error && /api ?key|apiKey|authToken/i.test(err.message)) return "The clerk can't reach the model: set ANTHROPIC_API_KEY (in .env.local locally, or in the Vercel project settings).";
-  console.error("[agent]", err);
-  return "Something went wrong behind the counter. Try again.";
+/** Setup problems get a clear instruction; transient model errors get an in-voice apology. */
+function describeError(err: unknown): { message: string; setup: boolean } {
+  const missingKey = err instanceof Error && /api ?key|apiKey|authToken/i.test(err.message);
+  if (err instanceof Anthropic.AuthenticationError || missingKey)
+    return { message: "The clerk can't reach the model: set ANTHROPIC_API_KEY (in .env.local locally, or in the Vercel project settings).", setup: true };
+  if (!(err instanceof Anthropic.APIError)) console.error("[agent]", err);
+  return { message: "Sorry, I lost my train of thought for a second there. Try me again?", setup: false };
+}
+
+function maskEmails(text: string): string {
+  return text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (m) => maskEmail(m));
 }
 
 function truncate(s: string, n: number) {

@@ -10,7 +10,7 @@ import { Trace } from "./Trace";
 
 /** The conversation panel. Docked on the right so the shelves stay visible. */
 export function CounterPanel() {
-  const { chatOpen, setChatOpen, messages, send, sending, locked, turn, settings, setSettingsOpen, newConversation } = useStore();
+  const { chatOpen, setChatOpen, messages, send, sending, locked, turn, settings, setSettingsOpen, newConversation, setupNeeded } = useStore();
   const [text, setText] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -63,7 +63,15 @@ export function CounterPanel() {
       </header>
 
       <div ref={listRef} className="thin-scroll flex-1 space-y-6 overflow-y-auto px-5 py-5" aria-live="polite" aria-busy={sending}>
-        {messages.length === 0 && (
+        {setupNeeded && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-medium">Setup needed</p>
+            <p className="mt-1">
+              The clerk needs an Anthropic API key. Add <code className="rounded bg-white/70 px-1">ANTHROPIC_API_KEY</code> to <code className="rounded bg-white/70 px-1">.env.local</code> and restart, or set it in the Vercel project settings and redeploy. You can still browse the shelves.
+            </p>
+          </div>
+        )}
+        {messages.length === 0 && !setupNeeded && (
           <div className="fade-in pt-8 text-center">
             <p className="text-lg font-medium">How can I help?</p>
             <p className="mt-1 text-sm text-stone-500">Find a book, get a recommendation, or sort out an order.</p>
@@ -78,7 +86,11 @@ export function CounterPanel() {
           ) : (
             <div key={m.id} className="fade-in">
               <div className={`text-[15px] leading-relaxed text-stone-800 ${m.pending ? "caret" : ""}`}>
-                {m.text ? <Markdownish text={m.text} /> : m.pending ? <span className="text-stone-400">Thinking</span> : null}
+                {m.text ? (
+                  <Markdownish text={m.text} />
+                ) : m.pending ? (
+                  <span className="text-stone-400">{m.status === "checking" ? "Checking the facts against the store's records" : "Thinking"}</span>
+                ) : null}
               </div>
               {m.error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{m.error}</p>}
               <Cards events={m.cards} isLatest={m.id === lastAgent && !m.pending} />

@@ -115,6 +115,11 @@ export function revertProcedure(owner: string, id: ProcedureId): ProcedureView {
   return getProcedure(owner, id);
 }
 
+/** Every procedure back to its default, for one shopper (used by "Reset demo"). */
+export function resetAllProcedures(owner: string) {
+  store.delete(owner);
+}
+
 export function resetProcedure(owner: string, id: ProcedureId): ProcedureView {
   setHistory(owner, id, undefined);
   return getProcedure(owner, id);

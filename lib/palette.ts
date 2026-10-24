@@ -19,6 +19,8 @@ const COLORS = [
 ];
 
 export interface Binding {
+  /** 0 plain, 1 thin rules top and bottom, 2 a darker band near the top. */
+  trim: 0 | 1 | 2;
   color: string;
   ink: string;
   isLight: boolean;
@@ -39,7 +41,9 @@ export function bindingFor(id: string, title: string): Binding {
   const h = hashString(id);
   const color = COLORS[h % COLORS.length];
   const isLight = luminance(color) > 0.6;
+  const t = (h >>> 24) % 10;
   const b: Binding = {
+    trim: t < 5 ? 0 : t < 8 ? 1 : 2,
     color,
     isLight,
     ink: isLight ? "#1c1917" : "#ffffff",

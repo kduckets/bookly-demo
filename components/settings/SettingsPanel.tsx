@@ -15,7 +15,9 @@ export function SettingsPanel() {
     settingsOpen,
     setSettingsOpen,
     newConversation,
+    resetDemo,
   } = useStore();
+  const [resetNote, setResetNote] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const [tab, setTab] = useState<"persona" | "procedures">("persona");
 
@@ -181,20 +183,34 @@ export function SettingsPanel() {
           </>
         )}
 
-        <div className="mt-6 flex items-center justify-between gap-4 border-t border-stone-200 pt-4">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-4">
           <p className="text-xs text-stone-500">
-            Persona and procedure edits apply from your next message.
+            {resetNote ?? "Persona and procedure edits apply from your next message."}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              newConversation();
-              setSettingsOpen(false);
-            }}
-            className="flex-none rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
-          >
-            New conversation
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                setResetNote("Resetting…");
+                await resetDemo();
+                setTab("persona");
+                setResetNote("Demo reset: conversation, cart, reader requests, orders, persona, and procedures are back to the start.");
+              }}
+              className="flex-none rounded-full border border-stone-300 px-4 py-2 text-sm font-medium hover:border-stone-900"
+            >
+              Reset demo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                newConversation();
+                setSettingsOpen(false);
+              }}
+              className="flex-none rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+            >
+              New conversation
+            </button>
+          </div>
         </div>
       </div>
     </div>

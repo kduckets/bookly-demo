@@ -26,6 +26,8 @@ export interface ChatMessage {
   cards: UIEvent[];
   trace: TraceEvent[];
   pending?: boolean;
+  /** "checking" while the reply is held for the output check. */
+  status?: "checking";
   error?: string;
 }
 
@@ -60,6 +62,10 @@ interface StoreState {
   send: (text: string) => Promise<void>;
   /** Bumped whenever the clerk changes the reader requests list. */
   wantedVersion: number;
+  /** True when the server has no API key, so the page can say so up front. */
+  setupNeeded: boolean;
+  /** Restore the demo's starting state (server data, cart, persona, procedures, conversation). */
+  resetDemo: () => Promise<void>;
   newConversation: () => void;
 }
 
@@ -89,6 +95,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false);
   const [turn, setTurn] = useState({ turn: 0, limit: 12 });
   const [wantedVersion, setWantedVersion] = useState(0);
+  const [setupNeeded, setSetupNeeded] = useState(false);
   const sendingRef = useRef(false);
 
   // Hydrate from localStorage after mount (keeps SSR markup stable).
@@ -103,6 +110,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const stored = load<Partial<Settings>>("bookly.settings", {});
     setSettingsState({ ...DEFAULT_SETTINGS, ...stored });
     setTurn((t) => ({ ...t, limit: stored.turnLimit ?? 12 }));
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setSetupNeeded(!d.hasKey))
+      .catch(() => {});
     fetch(`/api/cart?shopperId=${sid}`)
       .then((r) => r.json())
       .then((d) => d.cart && setCart(d.cart))
@@ -190,6 +201,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               patch((m) => ({ ...m, cards: [...m.cards, ev.event] }));
             } else if (ev.type === "trace") patch((m) => ({ ...m, trace: [...m.trace, ev.event] }));
             else if (ev.type === "error") patch((m) => ({ ...m, error: ev.message }));
+            else if (ev.type === "status") patch((m) => ({ ...m, status: ev.phase }));
             else if (ev.type === "done") {
               setTurn({ turn: ev.turn, limit: ev.limit });
               if (ev.locked) setLocked(true);
@@ -199,7 +211,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         patch((m) => ({ ...m, error: err instanceof Error ? err.message : "Network error" }));
       } finally {
-        patch((m) => ({ ...m, pending: false }));
+        patch((m) => ({ ...m, pending: false, status: undefined }));
         sendingRef.current = false;
         setSending(false);
       }
@@ -213,6 +225,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setLocked(false);
     setTurn({ turn: 0, limit: settings.turnLimit });
   }, [settings.turnLimit]);
+
+  const resetDemo = useCallback(async () => {
+    await fetch("/api/demo/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shopperId }) }).catch(() => {});
+    setSettings({ ...DEFAULT_SETTINGS, showTrace: settings.showTrace });
+    setSessionId(newId("sess"));
+    setMessages([]);
+    setLocked(false);
+    setTurn({ turn: 0, limit: DEFAULT_SETTINGS.turnLimit });
+    setCart(EMPTY_CART);
+    setHighlight(null);
+    setSelectedBookId(null);
+    setFilters({ genre: null, author: null, decade: null });
+    setWantedVersion((v) => v + 1);
+    setChatOpen(false);
+  }, [shopperId, settings.showTrace, setSettings]);
 
   const value = useMemo<StoreState>(
     () => ({
@@ -242,8 +269,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       send,
       newConversation,
       wantedVersion,
+      setupNeeded,
+      resetDemo,
     }),
-    [ready, shopperId, cart, addToCart, removeFromCart, cartOpen, highlight, showOnShelf, selectedBookId, filters, settings, setSettings, settingsOpen, chatOpen, messages, sending, locked, turn, send, newConversation, wantedVersion],
+    [ready, shopperId, cart, addToCart, removeFromCart, cartOpen, highlight, showOnShelf, selectedBookId, filters, settings, setSettings, settingsOpen, chatOpen, messages, sending, locked, turn, send, newConversation, wantedVersion, setupNeeded, resetDemo],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

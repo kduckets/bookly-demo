@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { getBook } from "@/data/catalog";
-import { catalogMatch, searchWorks, subjectWorks } from "@/lib/openlibrary";
+import { catalogMatch, searchWorksWithSource, subjectWorks } from "@/lib/openlibrary";
 import type { ExternalBook } from "@/lib/types";
 import { addWanted, sortedWanted } from "@/lib/wanted";
 import { defineTool, fail, ok } from "./types";
 import { recordShown } from "../gate";
+import { logAction } from "../session";
 import { normalize, resolveBook, summarize } from "./util";
 
 const UNTRUSTED =
@@ -58,7 +59,9 @@ export const searchOpenLibrary = defineTool({
     if (!input.query && !input.author && !input.subject) return fail("Provide a query, author, or subject.");
     let results: ExternalBook[];
     try {
-      results = dedupe(await searchWorks({ ...input, limit: (input.limit ?? 5) + 3 })).slice(0, input.limit ?? 5);
+      const { books, source } = await searchWorksWithSource({ ...input, limit: (input.limit ?? 5) + 3 });
+      results = dedupe(books).slice(0, input.limit ?? 5);
+      ctx.emitTrace({ type: "guardrail", rule: "open_library", detail: source === "cache" ? "source: cache (live call failed or timed out)" : "source: live" });
     } catch (err) {
       return offline(err);
     }
@@ -87,7 +90,7 @@ export const findRelatedBooks = defineTool({
     if (!title) return fail("Provide a book_id or a title.");
     const limit = input.limit ?? 6;
     try {
-      const [work] = dedupe(await searchWorks({ query: title, author, limit: 3 }));
+      const [work] = dedupe((await searchWorksWithSource({ query: title, author, limit: 3 })).books);
       if (!work) return ok({ note: "Open Library has no record of that book.", sold_by_bookly: [], not_stocked: [] });
       const subjects = input.subjects?.length ? input.subjects.slice(0, 2) : pickSubjects(work.subjects);
       const pools = await Promise.all((subjects.length ? subjects : work.subjects.slice(0, 1)).map((s) => subjectWorks(s, 12)));
@@ -132,6 +135,7 @@ export const addToReaderRequests = defineTool({
     if (s.requestsAdded >= MAX_REQUESTS_PER_SESSION) return fail(`That's the limit of ${MAX_REQUESTS_PER_SESSION} requests per conversation. Thank the customer; the buying team has their list.`);
     s.requestsAdded += 1;
     const { item, added } = addWanted({ title: input.title, author: input.author, year: input.year, openLibraryKey: input.open_library_key, reason: input.reason });
+    logAction(s, `Reader request added: ${item.title} by ${item.author} (we don't stock it yet)`);
     ctx.emitUI({ type: "wanted_list_updated", item, added });
     return ok({ added_new: added, title: item.title, author: item.author, total_requests: item.requests });
   },

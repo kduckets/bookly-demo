@@ -45,6 +45,12 @@ export interface Session {
   pendingOrders: string[];
   previews: Partial<Record<ConfirmKind, PendingPreview>>;
   ticketId?: string;
+  /** What happened this session, in plain words, for the handoff summary. */
+  actions: string[];
+  /** A policy "no" happened this turn: the reply must offer a person. Set by tools, consumed by the loop. */
+  handoffOfferDue?: string;
+  /** The offer made on the last reply; a plain "yes" to it hands off on the next message. */
+  pendingHandoffOffer?: { reason: string; turn: number };
   /** Reader requests added in this conversation (capped to prevent spam). */
   requestsAdded: number;
   messageTimes: number[];
@@ -90,6 +96,7 @@ export function createSession(init: {
     pendingOrders: [],
     previews: {},
     requestsAdded: 0,
+    actions: [],
     messageTimes: [],
   };
   sessions.set(init.id, s);
@@ -98,6 +105,22 @@ export function createSession(init: {
 
 export function deleteSession(id: string) {
   sessions.delete(id);
+}
+
+/** Drop every conversation for one shopper (used by "Reset demo"). Returns how many were cleared. */
+export function deleteSessionsForShopper(shopperId: string): number {
+  let n = 0;
+  for (const [id, s] of sessions) {
+    if (s.shopperId !== shopperId) continue;
+    sessions.delete(id);
+    n++;
+  }
+  return n;
+}
+
+/** Record something that happened (a return, a request, a declined check) for the handoff summary. */
+export function logAction(s: Session, text: string) {
+  if (!s.actions.includes(text)) s.actions.push(text);
 }
 
 // ─── Cart (keyed by shopper, so it survives "New conversation") ──────────────

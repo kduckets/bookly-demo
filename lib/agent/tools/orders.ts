@@ -3,10 +3,11 @@ import { formatPrice } from "@/data/catalog";
 import { allOrders } from "@/data/orders";
 import { POLICY_NUMBERS } from "@/data/policies";
 import type { Format, Order, OrderItem } from "@/lib/types";
-import { canonicalKey, clearPreview, gateConfirmation } from "../guardrails";
+import { canonicalKey, clearPreview, gateConfirmation, traceConfirm } from "../guardrails";
 import type { Session } from "../session";
 import { defineTool, fail, ok, type ToolOutcome } from "./types";
 import { recordOrderChoices, resolveOrder } from "../gate";
+import { logAction } from "../session";
 import { daysSince, money, normalize, normalizeOrderId, orderForModel, orderView, resolveBook, shortId } from "./util";
 
 const NOT_FOUND = "We couldn't find an order matching that order number and email. Ask the customer to double-check both.";
@@ -110,19 +111,25 @@ export const checkReturnEligibility = defineTool({
     const item = findItem(order, input.item_id);
     if (!item) return fail(`No item matching "${input.item_id}" in ${order.orderId}. Items: ${order.items.map((i) => `${i.itemId} ${i.title}`).join("; ")}`);
     ctx.session.slots.item = item.title;
-    return ok(eligibility(order, item));
+    const e = eligibility(order, item);
+    if (!e.return_eligible) {
+      logAction(ctx.session, `Return declined for ${item.title} (${order.orderId}): ${e.reason}`);
+      ctx.session.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for a return: ${e.reason}`;
+      return ok({ ...e, offer_handoff: true, handoff_reason: "The customer may want a person to review this. Offer to bring someone in." });
+    }
+    return ok(e);
   },
 });
 
 export const initiateReturn = defineTool({
   name: "initiate_return",
   description:
-    "Start a return for one or more eligible items. Collect reason and refund_method (original_payment: 5–7 business days after we receive it; store_credit: instant). Call with confirm=false to preview, then confirm=true with identical details only after the customer explicitly agrees.",
+    "Start a return for one or more eligible items. The refund goes to the original payment method (5–7 business days after we receive it) unless the customer asks for store_credit (instant). A reason is optional. Call with confirm=false to preview, then confirm=true with identical details only after the customer explicitly agrees.",
   schema: z.object({
     order_id: z.string(),
     item_ids: z.array(z.string()).min(1),
-    reason: z.string().min(1),
-    refund_method: z.enum(["original_payment", "store_credit"]),
+    reason: z.string().optional(),
+    refund_method: z.enum(["original_payment", "store_credit"]).default("original_payment"),
     confirm: z.boolean(),
   }),
   run(input, ctx) {
@@ -136,7 +143,8 @@ export const initiateReturn = defineTool({
       const e = eligibility(order, item);
       if (!e.return_eligible) {
         ctx.emitTrace({ type: "guardrail", rule: "return_policy", detail: `${item.title}: ${e.reason}` });
-        return fail(`Not eligible for return: ${e.reason}`, undefined, { exchange_eligible: e.exchange_eligible });
+        s.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for a return: ${e.reason}`;
+        return fail(`Not eligible for return: ${e.reason}`, undefined, { exchange_eligible: e.exchange_eligible, offer_handoff: true });
       }
       items.push(item);
     }
@@ -144,17 +152,18 @@ export const initiateReturn = defineTool({
     const timing = input.refund_method === "store_credit" ? "issued instantly as store credit" : "to the original payment method within 5–7 business days of receipt";
     const lines = [
       ...items.map((i) => `Return: ${i.title}${i.format ? ` (${i.format})` : ""} — ${money(i.price * i.quantity)}`),
-      `Reason: ${input.reason}`,
+      ...(input.reason ? [`Reason: ${input.reason}`] : []),
       `Refund ${money(refund)}, ${timing}`,
+      ...(input.refund_method === "original_payment" ? ["Prefer instant store credit instead? Just say so."] : []),
       "Free prepaid return label sent by email",
     ];
     const key = canonicalKey({ o: order.orderId, i: items.map((i) => i.itemId).sort().join(","), r: input.refund_method });
     const gate = gateConfirmation(s, "return", key, input.confirm, lines.join("; "));
+    traceConfirm(ctx.emitTrace, "initiate_return", gate);
     if (gate.status === "rejected") {
-      ctx.emitTrace({ type: "guardrail", rule: "confirmation_required", detail: `initiate_return: ${gate.reason}` });
       return fail(gate.reason);
     }
-    s.slots.reason = input.reason;
+    if (input.reason) s.slots.reason = input.reason;
     s.slots.refund_method = input.refund_method;
     if (gate.status === "preview") {
       ctx.emitUI({ type: "confirmation", kind: "return", stage: "preview", title: `Return from ${order.orderId}`, lines });
@@ -162,6 +171,7 @@ export const initiateReturn = defineTool({
     }
     for (const i of items) i.returned = true;
     const rma = shortId("RMA");
+    logAction(s, `Return started for ${items.map((i) => i.title).join(", ")} (${order.orderId}, ${rma}), refund ${money(refund)} ${input.refund_method === "store_credit" ? "as store credit" : "to the original payment method"}`);
     clearPreview(s, "return");
     ctx.emitUI({ type: "confirmation", kind: "return", stage: "done", title: "Return started", lines, reference: rma });
     return ok({ return_id: rma, refund_amount: refund, refund_timing: timing, label: "emailed" });
@@ -188,7 +198,8 @@ export const initiateExchange = defineTool({
     const e = eligibility(order, item);
     if (!e.exchange_eligible) {
       ctx.emitTrace({ type: "guardrail", rule: "exchange_policy", detail: `${item.title}: ${e.reason}` });
-      return fail(`Not eligible for exchange: ${e.reason}`);
+      s.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for an exchange: ${e.reason}`;
+      return fail(`Not eligible for exchange: ${e.reason}`, undefined, { offer_handoff: true });
     }
     const nb = resolveBook(input.new_book_id);
     if (!nb) return fail("Unknown new_book_id. Use search_catalog first.");
@@ -204,8 +215,8 @@ export const initiateExchange = defineTool({
     ];
     const key = canonicalKey({ o: order.orderId, i: item.itemId, b: nb.id, f: input.new_format });
     const gate = gateConfirmation(s, "exchange", key, input.confirm, lines.join("; "));
+    traceConfirm(ctx.emitTrace, "initiate_exchange", gate);
     if (gate.status === "rejected") {
-      ctx.emitTrace({ type: "guardrail", rule: "confirmation_required", detail: `initiate_exchange: ${gate.reason}` });
       return fail(gate.reason);
     }
     s.slots.new_book = nb.title;
@@ -216,6 +227,7 @@ export const initiateExchange = defineTool({
     }
     item.returned = true;
     const ref = shortId("EXC");
+    logAction(s, `Exchange started: ${item.title} (${order.orderId}) for ${nb.title} (${input.new_format}), ${ref}`);
     clearPreview(s, "exchange");
     ctx.emitUI({ type: "confirmation", kind: "exchange", stage: "done", title: "Exchange started", lines, reference: ref });
     return ok({ exchange_id: ref, price_difference: diff });

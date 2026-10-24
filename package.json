@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "eval": "tsx scripts/eval.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:check": "tsx scripts/demo-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.2.0",

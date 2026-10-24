@@ -187,5 +187,6 @@ export type StreamEvent =
   | { type: "text"; delta: string }
   | { type: "ui"; event: UIEvent }
   | { type: "trace"; event: TraceEvent }
+  | { type: "status"; phase: "checking" }
   | { type: "done"; turn: number; limit: number; locked: boolean }
   | { type: "error"; message: string };

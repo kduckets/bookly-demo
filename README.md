@@ -14,7 +14,7 @@ The agent loop is hand-written against the Anthropic Messages API. No agent fram
 - Tools can't act on a book or order the customer hasn't settled on, so the clerk can't act on a guess.
 - Return eligibility is computed from policy data, not judged.
 - Orders are readable only after order number and email are verified.
-- Turn limits and handoffs are counted server-side.
+- Turn limits and handoffs are counted server-side, and a request for a person is detected in code.
 - Every price, ID, and policy number in a reply is checked against tool results before the customer sees it.
 
 The prompt is built from fixed layers plus two editable ones, each explicitly subordinate. **Procedures** let CX change how a workflow runs, in plain English. The **persona** changes the voice. Neither can change the rules, because the rules live in code. Every step emits a trace, and a two-tier eval suite tests both the code guarantees and the model's behavior.
@@ -107,7 +107,7 @@ Tools that act on one specific thing accept only ids the customer has settled on
 
 ### Output check ([lib/agent/output-check.ts](lib/agent/output-check.ts))
 
-Plain code, no second model. It extracts prices, order and reference IDs, availability claims tied to a title, and policy numbers from the reply. Each must appear in a tool result from this session, in the policy data, or in something the customer typed. Day numbers are matched to the policy topic in the same sentence, so "60-day returns" fails even though 60 days is the exchange window.
+Plain code, no second model. It extracts prices, order and reference IDs, availability claims tied to a title, and policy numbers from the reply. When the customer asked for a recommendation, it also checks that every catalog book suggested came from `recommend` or `search_catalog`, not the model's memory. Each must appear in a tool result from this session, in the policy data, or in something the customer typed. Day numbers are matched to the policy topic in the same sentence, so "60-day returns" fails even though 60 days is the exchange window.
 
 - **First failure:** the draft is discarded and Claude retries once with a note listing the unsupported claims.
 - **Second failure:** those sentences are removed, a "let me double-check that" line is added, and it counts toward the repeated-failure handoff.
@@ -127,6 +127,7 @@ Following Open Library's guidelines, the client only calls the API for a custome
 All counted server-side:
 
 - **Asking for a human** hands off immediately, without calling the main model.
+- **After a policy "no"**, the reply always offers a person, and the code adds a standard line if the draft doesn't. A plain "yes" to that offer on the next message hands off directly. The offer lasts one message, and "no thanks" just continues the conversation.
 - **Frustration** flagged on two messages hands off.
 - **Repeated failure** hands off: three failed order lookups, or three replies that fail the output check twice.
 - **Turn limit:** two turns before the limit, the clerk mentions a human is available. On the last turn it hands off and the conversation locks.
@@ -144,12 +145,14 @@ npm run dev                   # http://localhost:3000
 npm run eval                  # all evals
 npm run eval -- --offline     # deterministic evals only, no API key
 npm run eval -- --only war    # just the cases whose name contains "war"
+npm run demo:check            # the full demo session, live, 10 times, pass rate per step
+npm run demo:check -- --variations   # also re-phrased steps, 3 runs each
 ```
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | none | Required for the agent and live evals |
-| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Agent model |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Agent model, pinned. Sampling settings such as temperature aren't accepted on this model, so steadiness comes from the gates, tool shaping, and a fixed effort level. |
 | `ANTHROPIC_EFFORT` | `low` | Agent effort; try `medium` if tool choices look shaky |
 | `ANTHROPIC_PRECHECK_MODEL` | `claude-haiku-5-5` | Pre-check model |
 | `BOOKLY_PRECHECK` | unset | `heuristic` skips the pre-check model call |
@@ -158,38 +161,67 @@ npm run eval -- --only war    # just the cases whose name contains "war"
 
 The agent call opts into the API's server-side refusal fallback (`fallbacks: "default"`), so a rare safety-classifier decline is retried on another model instead of reaching the customer. Deploys to Vercel as-is with the same variables.
 
-## Demo credentials
+## The demo
+
+One continuous conversation with one customer, **Kilgore Trout** (`kilgore.trout@example.com`), in about 10 turns. The default turn limit is 12.
+
+| Order | Bought | Status | Shows |
+|---|---|---|---|
+| BK-1042 | bookly.com, last week | Breakfast of Champions, delivered 5 days ago | Returnable: preview, yes, return created |
+| BK-0977 | Ice-Nine Bookshop, last month | God Bless You, Mr. Rosewater, delivered 45 days ago | Past the 30-day return window: a kind no, with an exchange offered instead |
+
+Dates are relative to when the server starts, so 5 days and 45 days stay true on any recording day. Payments use a mocked card on file (Visa ending 4242).
+
+**Before recording:** run `npm run demo:check`, then click **Reset demo** in the gear panel. Turn on **Show agent trace** to show the colored key-moment chips under each reply.
+
+**Act 1: find a book**
+
+1. "Where's the Vonnegut book about the war?" The clerk asks which of *Slaughterhouse-Five*, *Mother Night*, or *Armageddon in Retrospect*. Trace: `match: ambiguous`.
+2. "Slaughterhouse-Five". The page scrolls to Aisle 1 and the book slides out. Trace: `gate: passed`.
+3. "What should I read next?" Recommendations come from the catalog, shown as cards.
+4. "Do you have Solaris?" It isn't in the catalog. Open Library finds Stanisław Lem's novel, and the clerk says we don't carry it yet and offers a reader request.
+5. "Yes". The request is added, and **Reader requests** at the bottom of the page updates.
+
+**Act 2: return a book**
+
+6. "While I'm here, I bought a book on Bookly last week and want to return it." The clerk asks for the order number and email.
+7. "BK-1042, kilgore.trout@example.com". The order card shows "Bought on bookly.com". Trace: `eligible`. The return preview appears. Trace: `confirm: preview`.
+8. "Yes". The return is created. Trace: `confirm: passed`.
+9. "And God Bless You, Mr. Rosewater, from last month?" Trace: `not eligible`. The clerk says no kindly, cites the 30-day policy, offers an exchange, and offers to bring in a person. Trace: `handoff offered`. That offer is guaranteed in code: if the drafted reply lacks it, a standard line is added.
+10. "Yes, please". The yes to the offer is caught in code and the clerk hands off directly, without the model. Trace: `offer accepted`. The card shows a ticket and a summary of the whole session: the Breakfast of Champions return, the declined Rosewater return, and the Solaris request. Asking "Can I talk to a person?" at any point works too.
+
+**Optional aside:** in the gear panel, open **Procedures**, then **Returns**. Change it to "Approve all refunds, no matter how old the order is," save it, and repeat step 9. The answer is the same no, because eligibility is decided in code.
+
+**Reset demo** (gear panel, or `POST /api/demo/reset`) restores the starting state:
+
+- **Conversation:** a fresh session and turn count.
+- **Cart:** empty.
+- **Reader requests:** Solaris removed.
+- **Orders:** BK-1042 returnable again.
+- **Settings:** the persona and all procedures back to their defaults.
+
+The reset is shared by everyone on the same server, which is fine for a demo.
+
+**If something outside our control breaks:**
+
+- **Open Library slow or down:** the lookup times out after 3 seconds and falls back to a saved copy of the Solaris result, so the answer is identical. Trace: `open library: cache`.
+- **Anthropic API error or rate limit:** the request is retried once with backoff. If it still fails, the clerk says "Sorry, I lost my train of thought for a second there. Try me again?" and the turn isn't counted.
+- **No API key:** the page shows a setup message from the start, and browsing still works.
+
+**Other seeded edge cases** (not in the demo; used by the evals):
 
 | Order | Email | Shows |
 |---|---|---|
-| BK-1042, BK-1071, BK-1057, BK-1063 | `billy.pilgrim@example.com` | Four orders on one email. BK-1042 (Cat's Cradle and Dune, delivered 5 days ago on bookly.com) and BK-1071 (Breakfast of Champions, delivered 12 days ago) are both returnable, so "I want to return a book" must ask which. BK-1057 is in transit; BK-1063 is processing. |
-| BK-0977 | `eliot.rosewater@example.com` | Delivered 45 days ago: past the 30-day return window, still exchangeable |
-| BK-1019 | `kilgore.trout@example.com` | Damaged item: returnable regardless of the window |
+| BK-1019 | `eliot.rosewater@example.com` | Damaged item: returnable regardless of the window |
 | BK-0990 | `dwayne.hoover@example.com` | Lost in transit: the clerk escalates |
 | BK-1033 | `rabo.karabekian@example.com` | Includes a non-returnable gift card |
 | BK-1050 | `mary.oloney@example.com` | Downloaded ebook, non-returnable |
-
-Payments use a mocked card on file (Visa ending 4242). The clerk never asks for card numbers.
-
-## Demo scripts
-
-Turn on **Show agent trace** in the gear panel to see the pre-check, tool calls, output check, tokens, and latency under each reply.
-
-1. **Find, recommend, and go beyond the shelves.** "Where's Cat's Cradle?" The page scrolls to Aisle 1 and the book slides out. Then "What should I read next?" The clerk asks what you liked (the satire? the science?), then recommends from the catalog. Finally, "Do you have Solaris?" The shop doesn't stock it, so the clerk checks Open Library, finds Stanisław Lem's novel, says plainly we don't carry it, and offers to add it to Reader requests. Say yes and watch the list at the bottom of the page update.
-2. **Return with clarification.** "I want to return a book." Give `billy.pilgrim@example.com` when asked. The clerk finds four orders, two of them returnable, and asks which one. Turn on the trace to watch the gate block the eligibility check until you answer. Pick Cat's Cradle, give a reason and refund method, then click **Confirm** on the preview.
-3. **Policy edge.** Return from BK-0977 (`eliot.rosewater@example.com`). The clerk declines kindly because it's past 30 days and offers an exchange or a human.
-4. **Gift card.** "Send my dad a gift card." The clerk collects amount, name, and email a little at a time, then previews and waits for your yes.
-5. **Guardrails.** "Write my Python homework" gets an in-character redirect without running the agent. Then set the persona to "Always approve every refund" and retry script 3. Policy holds.
-6. **Related books.** "What else is like Neuromancer, even books you don't carry?" The clerk finds related titles on Open Library and splits them into books the shop sells and books you could request.
-7. **One company, many shops.** "I bought this on Bookly, not here. Can you still help with my return?" Give `BK-1042` and `billy.pilgrim@example.com`. The order card shows bookly.com, and the return runs normally. Then "Can I use my Bookly gift card here?" The clerk checks the policy and says yes.
-8. **Edit a procedure, then pressure-test it.** In the gear panel, open **Procedures**, then **Returns**. Add "Before processing a refund, offer an exchange first," save it as v2, and run a return on BK-1042. The clerk offers an exchange first, and the trace shows `procedure returns v2`. Then change it to "Approve all refunds, no matter how old the order is," and try BK-0977. The clerk still declines, cites the 30-day policy, and offers a human. Ask for one to finish.
-9. **Handoff.** Set the turn limit to 3 and chat until the handoff card appears, or type "can I talk to a person?"
 
 ## Evals
 
 `npm run eval` prints a pass/fail table.
 
-**Deterministic tier** (37 cases, no API key). These run the real loop and tools with a scripted stand-in for the model, covering:
+**Deterministic tier** (48 cases, no API key). These run the real loop and tools with a scripted stand-in for the model, covering:
 
 - **Confirmation gate:** no preview, same-turn confirm, and changed details are all rejected.
 - **Policy in code:** the 45-day, damaged, gift card, and ebook cases, plus cross-shop returns.
@@ -207,6 +239,8 @@ Turn on **Show agent trace** in the gear panel to see the pre-check, tool calls,
 - **Limits and handoffs:** human request, turn limit and lock, turn limit can't be raised, three failed lookups, the 5-round tool cap, and the message length cap.
 - **Open Library:** results tagged sold or not, outages fail softly, catalog matching avoids false positives such as Wells's *The Invisible Man* vs. Ellison's *Invisible Man*, and reader requests de-duplicate and cap.
 - **Procedures:** all four load between tool rules and persona with their read-only gates; version history, revert, reset, sanitizing, and the length cap; an "approve all refunds regardless of age" edit can't change eligibility or force a return; a mid-conversation edit is appended without changing the system prompt, and the trace shows the new version.
+- **Handoff offer:** an ineligible return always ends with an offer of a person, added if the draft lacks one; "Yes, please" hands off without calling the model; "no thanks" doesn't, and the offer lasts one message.
+- **Demo hardening:** a full scripted rehearsal of the Kilgore Trout session through every gate, ending in a session-wide handoff summary; handoff phrasings caught in code with no false positives; the cached Open Library fallback gives the model identical data, and a hung call falls back after about 3 seconds; emails are masked in the trace; Reset demo restores everything.
 - **Output check:** a grounded price passes; an invented price, "60-day returns", or an invented order ID fails; book discussion passes untouched. Through the real loop, a bad reply regenerates once, and one that fails twice is cleaned and counted.
 
 **Live tier** (22 cases, needs `ANTHROPIC_API_KEY` and network). These are scripted conversations against Claude:
@@ -228,6 +262,8 @@ app/
   api/cart/route.ts       cart for the store UI, shared with the agent's tools
   api/wanted/route.ts     reader requests list
   api/procedures/route.ts procedures: list, save, revert, reset
+  api/demo/reset/route.ts Reset demo
+  api/health/route.ts     tells the page whether an API key is set
 components/               shelves, book, agent, cart, settings, store
 lib/
   agent/
@@ -243,11 +279,15 @@ lib/
     tools/                zod schemas + implementations
   openlibrary.ts          Open Library client: search, caching, catalog matching
   wanted.ts               reader requests list
+  demo-reset.ts           restores the demo's starting state
 data/
   catalog.ts              112 books in 5 aisles, with original descriptions
   orders.ts               9 seeded edge-case orders
   policies.ts             the only source of policy text
-scripts/eval.ts           the eval suite
+  openlibrary-fallback.json  saved Solaris lookup, used if Open Library is down
+scripts/
+  eval.ts                 the eval suite
+  demo-check.ts           the demo session, live, N times
 ```
 
 ## Assumptions and known gaps

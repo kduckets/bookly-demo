@@ -9,7 +9,7 @@ import type { Book } from "@/lib/types";
  * parsing, no model call. Free-form literary discussion is deliberately not checked.
  */
 
-export type ClaimKind = "price" | "order_id" | "reference" | "availability" | "policy_days";
+export type ClaimKind = "price" | "order_id" | "reference" | "availability" | "policy_days" | "recommendation";
 
 export interface Claim {
   kind: ClaimKind;
@@ -36,6 +36,8 @@ export interface GroundingFacts {
   seenBookIds: Set<string>;
   /** Normalized titles from Open Library results that Bookly does not sell. */
   externalTitles: Set<string>;
+  /** True when the customer asked for a recommendation: suggested books must come from a lookup. */
+  recommending: boolean;
 }
 
 export const FALLBACK = "Let me double-check that for you. I can look it up again, or bring in a human colleague if you'd prefer.";
@@ -49,7 +51,7 @@ const norm = (s: string) =>
 /** Minimal message shape, so this module doesn't depend on the SDK. */
 type Msg = { role: string; content?: unknown };
 
-export function buildFacts(messages: Msg[], customerTexts: string[]): GroundingFacts {
+export function buildFacts(messages: Msg[], customerTexts: string[], opts: { recommending?: boolean } = {}): GroundingFacts {
   const toolTexts: string[] = [];
   for (const m of messages) {
     if (m.role !== "user" || !Array.isArray(m.content)) continue;
@@ -67,7 +69,9 @@ export function buildFacts(messages: Msg[], customerTexts: string[]): GroundingF
   for (const b of CATALOG) if (tools.includes(`"${b.id}"`)) seenBookIds.add(b.id);
   for (const m of tools.matchAll(/"title":"((?:[^"\\]|\\.)*)"[^{}]*?"sold_by_bookly":false/g)) externalTitles.add(norm(m[1]));
 
-  return { numbers, corpus: all.toUpperCase(), seenBookIds, externalTitles };
+  // Books the customer named themselves count as looked up: talking about them is fine.
+  for (const b of CATALOG) if (customerTexts.some((t) => t.toLowerCase().includes(b.title.toLowerCase()))) seenBookIds.add(b.id);
+  return { numbers, corpus: all.toUpperCase(), seenBookIds, externalTitles, recommending: !!opts.recommending };
 }
 
 // ─── Claims ───────────────────────────────────────────────────────────────────
@@ -147,6 +151,14 @@ export function checkReply(text: string, facts: GroundingFacts): CheckResult {
         } else if (negative && /\b(carry|stock|have)\b/i.test(sentence) && !/\b(print|hardcover|paperback|ebook|format)\b/i.test(sentence)) {
           add("availability", `${b.title}: not carried`, !(b.stock > 0), `Says we don't have ${b.title}, but it's in the catalog and in stock`);
         }
+      }
+    }
+
+    // Recommendations: when the customer asked what to read, every catalog book suggested must
+    // have come from recommend or search_catalog, not from the model's own memory.
+    if (facts.recommending) {
+      for (const b of titlesIn(sentence)) {
+        if (!facts.seenBookIds.has(b.id)) add("recommendation", b.title, false, `suggested ${b.title} without looking it up; call recommend (or search_catalog) and suggest from the results`);
       }
     }
 

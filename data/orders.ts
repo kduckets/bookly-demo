@@ -10,9 +10,47 @@ const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 const ahead = (days: number) => new Date(Date.now() + days * DAY).toISOString();
 
 export const ORDERS: Order[] = [
-  // Multiple orders on one email (triggers "which order?"). This one: delivered 5 days ago, return-eligible.
+  // ── The demo customer, Kilgore Trout ──────────────────────────────────────
+  // Bought on bookly.com last week, delivered 5 days ago: returnable.
   {
     orderId: "BK-1042",
+    purchasedAt: "bookly.com",
+    email: "kilgore.trout@example.com",
+    status: "delivered",
+    placedAt: ago(9),
+    shippedAt: ago(8),
+    deliveredAt: ago(5),
+    carrier: "USPS",
+    trackingNumber: "9400 1000 0000 0000 1042",
+    shippingMethod: "standard",
+    items: [
+      { itemId: "1042-1", bookId: "kv-breakfast-of-champions", title: "Breakfast of Champions", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
+    ],
+    total: 16.99 + 4.99,
+  },
+  // Bought at the Ice-Nine Bookshop last month, delivered 45 days ago: past the 30-day return
+  // window, inside the 60-day exchange window. The demo's kind "no".
+  {
+    orderId: "BK-0977",
+    purchasedAt: "Ice-Nine Bookshop",
+    email: "kilgore.trout@example.com",
+    status: "delivered",
+    placedAt: ago(50),
+    shippedAt: ago(48),
+    deliveredAt: ago(45),
+    carrier: "USPS",
+    trackingNumber: "9400 1000 0000 0000 0977",
+    shippingMethod: "standard",
+    items: [
+      { itemId: "0977-1", bookId: "kv-god-bless-you-mr-rosewater", title: "God Bless You, Mr. Rosewater", kind: "book", format: "hardcover", quantity: 1, price: 25.0 },
+    ],
+    total: 25.0 + 4.99,
+  },
+
+  // ── Other edge cases (not in the demo script) ────────────────────────────
+  // Multiple orders on one email (triggers "which order?"). This one: delivered 5 days ago, return-eligible.
+  {
+    orderId: "BK-1038",
     purchasedAt: "bookly.com",
     email: "billy.pilgrim@example.com",
     status: "delivered",
@@ -23,8 +61,8 @@ export const ORDERS: Order[] = [
     trackingNumber: "9400 1000 0000 0000 1042",
     shippingMethod: "standard",
     items: [
-      { itemId: "1042-1", bookId: "kv-cats-cradle", title: "Cat's Cradle", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
-      { itemId: "1042-2", bookId: "sf-dune", title: "Dune", kind: "book", format: "hardcover", quantity: 1, price: 28.0 },
+      { itemId: "1038-1", bookId: "kv-cats-cradle", title: "Cat's Cradle", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
+      { itemId: "1038-2", bookId: "sf-dune", title: "Dune", kind: "book", format: "hardcover", quantity: 1, price: 28.0 },
     ],
     total: 44.99,
   },
@@ -42,6 +80,24 @@ export const ORDERS: Order[] = [
     shippingMethod: "standard",
     items: [
       { itemId: "1071-1", bookId: "kv-breakfast-of-champions", title: "Breakfast of Champions", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
+    ],
+    total: 16.99 + 4.99,
+  },
+  // Same email: delivered 45 days ago on bookly.com. Past the 30-day return window, inside the
+  // 60-day exchange window. The demo's "kind no" for returns.
+  {
+    orderId: "BK-0964",
+    purchasedAt: "bookly.com",
+    email: "billy.pilgrim@example.com",
+    status: "delivered",
+    placedAt: ago(50),
+    shippedAt: ago(48),
+    deliveredAt: ago(45),
+    carrier: "USPS",
+    trackingNumber: "9400 1000 0000 0000 0964",
+    shippingMethod: "standard",
+    items: [
+      { itemId: "0964-1", bookId: "kv-sirens-of-titan", title: "The Sirens of Titan", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
     ],
     total: 16.99 + 4.99,
   },
@@ -78,29 +134,12 @@ export const ORDERS: Order[] = [
     total: 26.0 + 9.99,
     note: "Expedited shipping selected.",
   },
-  // Delivered 45 days ago: outside the 30-day return window, inside the 60-day exchange window.
-  {
-    orderId: "BK-0977",
-    purchasedAt: "Ice-Nine Bookshop",
-    email: "eliot.rosewater@example.com",
-    status: "delivered",
-    placedAt: ago(50),
-    shippedAt: ago(48),
-    deliveredAt: ago(45),
-    carrier: "USPS",
-    trackingNumber: "9400 1000 0000 0000 0977",
-    shippingMethod: "standard",
-    items: [
-      { itemId: "0977-1", bookId: "kv-god-bless-you-mr-rosewater", title: "God Bless You, Mr. Rosewater", kind: "book", format: "hardcover", quantity: 1, price: 25.0 },
-      { itemId: "0977-2", bookId: "cl-great-gatsby", title: "The Great Gatsby", kind: "book", format: "paperback", quantity: 1, price: 12.99 },
-    ],
-    total: 37.99,
-  },
+
   // Delivered 40 days ago with one damaged item: the damaged item is eligible regardless of the window.
   {
     orderId: "BK-1019",
     purchasedAt: "bookly.com",
-    email: "kilgore.trout@example.com",
+    email: "eliot.rosewater@example.com",
     status: "delivered",
     placedAt: ago(44),
     shippedAt: ago(42),
@@ -169,6 +208,11 @@ export const ORDERS: Order[] = [
 
 /** Orders created during the demo (checkout, returns) live here, in memory. */
 const g = globalThis as unknown as { __booklyOrders?: Order[] };
+/** Restore the seeded orders (undoes returns, exchanges, and checkouts). Used by "Reset demo". */
+export function resetOrders() {
+  g.__booklyOrders = undefined;
+}
+
 export function allOrders(): Order[] {
   if (!g.__booklyOrders) g.__booklyOrders = structuredClone(ORDERS);
   return g.__booklyOrders;

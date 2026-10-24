@@ -46,9 +46,16 @@ export function resolveOrder(s: Session, orderId: string) {
   s.pendingOrders = [];
 }
 
+/**
+ * Orders we just listed become the set to pick from. The customer may already have said which
+ * one before the list existed ("And God Bless You, Mr. Rosewater, from last month?"), so their
+ * latest message is checked against it straight away.
+ */
 export function recordOrderChoices(s: Session, orderIds: string[]) {
-  if (orderIds.length === 1) resolveOrder(s, orderIds[0]);
-  else s.pendingOrders = orderIds;
+  if (orderIds.length === 1) return resolveOrder(s, orderIds[0]);
+  s.pendingOrders = orderIds;
+  const latest = [...s.transcript].reverse().find((t) => t.role === "user")?.text;
+  if (latest) pickPendingOrder(s, latest);
 }
 
 // ─── Detecting the customer's pick ───────────────────────────────────────────
@@ -97,20 +104,24 @@ export function resolveFromCustomer(s: Session, message: string): string[] {
       picked.push(id);
     }
   }
-  if (s.pendingOrders.length) {
-    const orders = s.pendingOrders.map((id) => allOrders().find((o) => o.orderId === id)).filter((o): o is Order => !!o);
-    const named = new Set(titlesIn(message).map((b) => b.id));
-    const byItem = orders.filter((o) => o.items.some((it) => it.bookId && named.has(it.bookId)));
-    const status = message.match(/\b(delivered|shipped|in transit|processing)\b/i)?.[1].toLowerCase().replace("in transit", "shipped");
-    const byStatus = status ? orders.filter((o) => o.status === status) : [];
-    const i = ordinalPick(message, orders.length);
-    const chosen = byItem.length === 1 ? byItem[0] : byStatus.length === 1 ? byStatus[0] : i !== null ? orders[i] : null;
-    if (chosen) {
-      resolveOrder(s, chosen.orderId);
-      picked.push(chosen.orderId);
-    }
-  }
+  const order = pickPendingOrder(s, message);
+  if (order) picked.push(order);
   return picked;
+}
+
+/** Resolve one of the pending orders from a message: by an item title, a status, or a position. */
+function pickPendingOrder(s: Session, message: string): string | null {
+  if (!s.pendingOrders.length) return null;
+  const orders = s.pendingOrders.map((id) => allOrders().find((o) => o.orderId === id)).filter((o): o is Order => !!o);
+  const named = new Set(titlesIn(message).map((b) => b.id));
+  const byItem = orders.filter((o) => o.items.some((it) => it.bookId && named.has(it.bookId)));
+  const status = message.match(/\b(delivered|shipped|in transit|processing)\b/i)?.[1].toLowerCase().replace("in transit", "shipped");
+  const byStatus = status ? orders.filter((o) => o.status === status) : [];
+  const i = ordinalPick(message, orders.length);
+  const chosen = byItem.length === 1 ? byItem[0] : byStatus.length === 1 ? byStatus[0] : i !== null ? orders[i] : null;
+  if (!chosen) return null;
+  resolveOrder(s, chosen.orderId);
+  return chosen.orderId;
 }
 
 // ─── The gate ─────────────────────────────────────────────────────────────────

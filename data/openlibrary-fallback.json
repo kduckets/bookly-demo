@@ -1,0 +1,282 @@
+{
+ "_note": "Captured from openlibrary.org/search.json?q=Solaris for the demo fallback. Used only when the live call fails or times out.",
+ "solaris": [
+  {
+   "author_name": [
+    "Stanisław Lem"
+   ],
+   "edition_count": 86,
+   "first_publish_year": 1961,
+   "key": "/works/OL109524W",
+   "title": "Solaris",
+   "subject": [
+    "Translations into English",
+    "English fiction",
+    "Polish Science fiction",
+    "Polish fiction",
+    "Translations from Polish",
+    "Science fiction",
+    "Fiction, science fiction, general",
+    "Slavic philology",
+    "Life on other planets",
+    "Fiction",
+    "Emotions",
+    "Memory",
+    "Psychologists"
+   ],
+   "editions": {
+    "numFound": 84,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Solaris",
+      "language": [
+       "eng"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Iain Banks"
+   ],
+   "edition_count": 14,
+   "first_publish_year": 1996,
+   "key": "/works/OL8368435W",
+   "title": "Excession",
+   "subject": [
+    "Science fiction",
+    "Fiction",
+    "Long Now Manual for Civilization"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Excesion/ Excession (Solaris Ficcion/ Solaris Fiction)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Brian Jacques"
+   ],
+   "edition_count": 26,
+   "first_publish_year": 1995,
+   "key": "/works/OL465939W",
+   "title": "Outcast of Redwall (Redwall #8)",
+   "subject": [
+    "Fantasy",
+    "Animals",
+    "Fiction",
+    "Children's fiction",
+    "Redwall abbey (imaginary place), fiction",
+    "Redwall Abbey (Imaginary place)",
+    "Fantasy fiction",
+    "Juvenile fiction",
+    "Mice",
+    "English Fantasy fiction",
+    "Badgers",
+    "Ferrets",
+    "Rats",
+    "Heroes and heroines",
+    "Good and evil",
+    "Adventure and adventurers, fiction",
+    "Animals, fiction",
+    "Romans, nouvelles, etc. pour la jeunesse",
+    "Juvenile",
+    "Abbaye de Rougemuraille (Lieu imaginaire)"
+   ],
+   "editions": {
+    "numFound": 3,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Solaris, tome 2 "
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Philip K. Dick"
+   ],
+   "edition_count": 68,
+   "first_publish_year": 1969,
+   "key": "/works/OL2172454W",
+   "title": "Ubik",
+   "subject": [
+    "Fiction",
+    "Death",
+    "Businessmen",
+    "Explosions",
+    "Science Fiction",
+    "Fiction, science fiction, general",
+    "Iowa, fiction",
+    "Fiction, humorous",
+    "FICTION / Science Fiction / General",
+    "FICTION / Literary",
+    "Large type books",
+    "Motion picture plays",
+    "Fiction, humorous, general",
+    "Murder victims",
+    "Terrorism",
+    "Death--fiction",
+    "Businessmen--fiction",
+    "Explosions--fiction",
+    "Science fiction, american",
+    "Ps3554.i3 u24 1991",
+    "813/.54",
+    "American Science fiction",
+    "Time"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Ubik (Solaris)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Iain Banks"
+   ],
+   "edition_count": 28,
+   "first_publish_year": 1987,
+   "key": "/works/OL8368432W",
+   "title": "Consider Phlebas",
+   "subject": [
+    "Fiction",
+    "Imaginary wars and battles",
+    "OverDrive",
+    "Science Fiction",
+    "Accessible book",
+    "Protected DAISY",
+    "Long now manual for civilization"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Pensad En Flebas/ Consider Phlebas (Solaris)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Mercedes Lackey"
+   ],
+   "edition_count": 11,
+   "first_publish_year": 1987,
+   "key": "/works/OL112556W",
+   "title": "Arrows of the Queen",
+   "subject": [
+    "Fantasy",
+    "Valdemar (Imaginary place)",
+    "Fiction",
+    "Valdemar",
+    "Heralds of Valdemar",
+    "fantasy",
+    "fiction",
+    "Valdemar (imaginary place), fiction",
+    "Fiction, fantasy, epic",
+    "Fiction, general",
+    "Fiction, fantasy, general"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Las Flechas De La Reina/ Arrows of the Queen (Solaris)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Robert Reed"
+   ],
+   "edition_count": 6,
+   "first_publish_year": 2000,
+   "key": "/works/OL1954970W",
+   "title": "Marrow",
+   "subject": [
+    "Space ships",
+    "Fiction",
+    "Fiction, science fiction, space opera"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "Medula/ Marrow (Solaris)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Alastair Reynolds"
+   ],
+   "edition_count": 10,
+   "first_publish_year": 2002,
+   "key": "/works/OL5724832W",
+   "title": "Redemption Ark",
+   "subject": [
+    "Space colonies",
+    "Fiction",
+    "Space ships",
+    "Death",
+    "Parent and adult child",
+    "Life on other planets",
+    "Fiction, fantasy, general",
+    "English literature"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "title": "El Arca De La Redencion (Solaris)",
+      "language": [
+       "spa"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

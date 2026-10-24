@@ -7,19 +7,14 @@ export const HANDOFF_ETA = "A Bookly team member will reply by email within 2 bu
 
 /** Build a handoff summary from session state, so the customer never has to repeat themselves. */
 export function summaryFromSession(s: Session, reason: string): string {
-  const parts: string[] = [];
-  const firstAsk = s.transcript.find((t) => t.role === "user")?.text;
+  const parts: string[] = [`Reason: ${reason}.`];
+  if (s.actions.length) parts.push(`This session: ${s.actions.join("; ")}.`);
+  const known: string[] = [];
+  if (s.slots.email) known.push(`email ${maskEmail(s.slots.email)}`);
+  if (s.verifiedOrderIds.length) known.push(`verified orders ${s.verifiedOrderIds.join(", ")}`);
+  if (known.length) parts.push(`Known: ${known.join("; ")}.`);
   const lastAsk = [...s.transcript].reverse().find((t) => t.role === "user")?.text;
-  parts.push(`Reason: ${reason}.`);
-  if (s.activeIntent && s.activeIntent !== "human") parts.push(`Customer was working on: ${s.activeIntent.replace("_", " ")}.`);
-  const facts = Object.entries(s.slots)
-    .filter(([k]) => k !== "email")
-    .map(([k, v]) => `${k.replace("_", " ")}: ${v}`);
-  if (s.slots.email) facts.unshift(`email: ${maskEmail(s.slots.email)}`);
-  if (s.verifiedOrderIds.length) facts.push(`verified orders: ${s.verifiedOrderIds.join(", ")}`);
-  if (facts.length) parts.push(`Known: ${facts.join("; ")}.`);
-  if (firstAsk) parts.push(`First message: “${firstAsk.slice(0, 120)}”.`);
-  if (lastAsk && lastAsk !== firstAsk) parts.push(`Latest: “${lastAsk.slice(0, 120)}”.`);
+  if (lastAsk) parts.push(`Latest message: “${lastAsk.slice(0, 120)}”.`);
   return parts.join(" ");
 }
 
@@ -37,7 +32,8 @@ export const escalateToHuman = defineTool({
   schema: z.object({ reason: z.string(), summary: z.string() }),
   run(input, ctx) {
     const s = ctx.session;
+    const done = s.actions.length ? ` This session: ${s.actions.join("; ")}.` : "";
     const known = s.verifiedOrderIds.length ? ` Verified orders: ${s.verifiedOrderIds.join(", ")}.` : "";
-    return ok(openTicket(ctx, input.reason, `${input.summary.trim()}${known}`));
+    return ok(openTicket(ctx, input.reason, `${input.summary.trim()}${done}${known}`));
   },
 });

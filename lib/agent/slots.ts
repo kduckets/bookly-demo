@@ -24,7 +24,7 @@ export const REQUIRED_SLOTS: Partial<Record<Intent, string[]>> = {
   find_book: ["book"],
   recommend: ["interest"],
   order_status: ["order_id", "email"],
-  return: ["email", "order_id", "item", "reason", "refund_method"],
+  return: ["email", "order_id", "item"],
   exchange: ["email", "order_id", "item", "new_book", "new_format"],
   gift_card: ["amount", "recipient_name", "recipient_email"],
   checkout: ["cart_reviewed"],

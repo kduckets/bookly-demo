@@ -1,6 +1,7 @@
 import { CATALOG } from "@/data/catalog";
 import { normalize } from "@/lib/agent/tools/util";
 import type { ExternalBook } from "@/lib/types";
+import FALLBACK from "@/data/openlibrary-fallback.json";
 
 /**
  * A small Open Library client (https://openlibrary.org/developers/api).
@@ -11,7 +12,8 @@ import type { ExternalBook } from "@/lib/types";
 
 const BASE = "https://openlibrary.org";
 const TTL_MS = 60 * 60 * 1000;
-const TIMEOUT_MS = 6000;
+/** Short on purpose: a slow lookup shouldn't stall the demo. On timeout we fall back to the cache. */
+const TIMEOUT_MS = 3000;
 
 const g = globalThis as unknown as { __olCache?: Map<string, { at: number; data: unknown }> };
 const cache = (g.__olCache ??= new Map());
@@ -24,9 +26,17 @@ function userAgent() {
 async function getJSON(path: string): Promise<unknown> {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.data;
-  const res = await fetch(`${BASE}${path}`, { headers: { "User-Agent": userAgent(), Accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Open Library returned ${res.status}`);
-  const data = await res.json();
+  // An explicit timer (not AbortSignal.timeout) so a hung request always settles.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("Open Library timed out")), TIMEOUT_MS);
+  let data: unknown;
+  try {
+    const res = await fetch(`${BASE}${path}`, { headers: { "User-Agent": userAgent(), Accept: "application/json" }, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`Open Library returned ${res.status}`);
+    data = await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
   cache.set(path, { at: Date.now(), data });
   return data;
 }
@@ -97,6 +107,34 @@ function toExternal(raw: Record<string, unknown>): ExternalBook | null {
 }
 
 const FIELDS = "key,title,author_name,first_publish_year,subject,edition_count,editions,editions.title,editions.language";
+
+/**
+ * Saved responses for the demo's own lookups (data/openlibrary-fallback.json), keyed by a word the
+ * query must contain. Used only when the live call fails or times out, so the clerk's answer is
+ * the same either way.
+ */
+function fallbackFor(opts: { query?: string; author?: string }): Record<string, unknown>[] | null {
+  const text = normalize(`${opts.query ?? ""} ${opts.author ?? ""}`);
+  for (const [key, docs] of Object.entries(FALLBACK)) {
+    if (key.startsWith("_") || !Array.isArray(docs)) continue;
+    if (` ${text} `.includes(` ${key} `)) return docs as Record<string, unknown>[];
+  }
+  return null;
+}
+
+export type OLSource = "live" | "cache";
+
+/** Search, falling back to the saved demo response if Open Library is down or slow. */
+export async function searchWorksWithSource(opts: { query?: string; author?: string; subject?: string; limit?: number }): Promise<{ books: ExternalBook[]; source: OLSource }> {
+  try {
+    return { books: await searchWorks(opts), source: "live" };
+  } catch (err) {
+    const docs = fallbackFor(opts);
+    if (!docs) throw err;
+    const books = docs.slice(0, Math.min(10, opts.limit ?? 6)).map(toExternal).filter((b): b is ExternalBook => !!b);
+    return { books, source: "cache" };
+  }
+}
 
 export async function searchWorks(opts: { query?: string; author?: string; subject?: string; limit?: number }): Promise<ExternalBook[]> {
   const p = new URLSearchParams();

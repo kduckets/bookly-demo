@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ConfirmKind, ScopeLabel } from "@/lib/types";
+import type { ConfirmKind, ScopeLabel, TraceEvent } from "@/lib/types";
 import type { Session } from "./session";
 import { INTENTS, SLOT_NAMES, type Intent } from "./slots";
 
@@ -51,8 +51,43 @@ export interface Precheck {
   source: "model" | "heuristic";
 }
 
-const HUMAN_RE =
-  /\b(speak|talk|chat|connect|transfer)\b.{0,30}\b(human|person|agent|representative|rep|someone real|manager|staff|employee)\b|\b(real|live|actual) (person|human|agent)\b|\bhuman,? please\b|^\s*(agent|human|representative)\s*[.!]*\s*$/i;
+/**
+ * Requests for a human, detected in code so a handoff never depends on the model noticing.
+ * Each pattern needs a clear "to a person" shape, so "a book about a person" or "The Human Stain"
+ * don't trigger it.
+ */
+const PEOPLE = "(?:a |an |the |some |your )?(?:real |live |actual |human )?(?:human(?: being)?|person|people|agent|representative|rep|someone real|somebody real|manager|supervisor|staff(?: member)?|employee|customer (?:service|support)|support team|operator)";
+const HUMAN_PATTERNS: RegExp[] = [
+  new RegExp(`\\b(?:speak|talk|chat|connect|transfer|put|pass|escalate|hand)\\b[^.?!]{0,25}\\b(?:to|with|through to|over to)\\s+${PEOPLE}\\b`, "i"),
+  // "I'd like a human", "get me a manager": the person must end the request, so "a human story" doesn't count.
+  new RegExp(`\\b(?:want|need|get|give|find|reach|bring in|see|like|prefer)\\s+(?:me\\s+)?(?:to\\s+(?:talk|speak)\\s+(?:to|with)\\s+)?(?:a |an |some )?(?:real |live |actual )?(?:human(?: being)?|agent|representative|rep|manager|supervisor|someone real|real person|live person|actual person)(?=\\s*(?:$|[.,!?]|please|now|instead|here|to help|on this|for this))`, "i"),
+  /\b(?:is there|are there|can i get|can i have|could i get)\s+(?:a |an |any )?(?:real |live |actual )?(?:human|person|people|agent|representative)\b/i,
+  /\b(?:real|live|actual) (?:person|human|agent)\b/i,
+  /\bhuman,? please\b/i,
+  /^\W*(?:agent|human|representative|operator|a human|a person|real person|person please)\W*$/i,
+];
+export const wantsHumanText = (message: string) => HUMAN_PATTERNS.some((re) => re.test(message));
+
+// ─── Handoff offer after a policy "no" ────────────────────────────────────────
+
+/** Appended when a reply to a policy "no" doesn't already offer a person. */
+export const HANDOFF_OFFER_LINE = "I can't make an exception, but a person on our team can take a look. Want me to bring someone in?";
+
+/** Does the reply already offer to connect the customer with a person? */
+const OFFER_RE =
+  /\b(?:bring (?:in )?(?:someone|somebody|a person|a colleague|a human|a team member)|bring (?:them|one) in|connect you (?:with|to)|hand (?:this|you) (?:over|off)|put you (?:through|in touch)|(?:person|human|colleague|someone|somebody|team member|people on our team)[^.?!]{0,80}\?)/i;
+export const offersPerson = (reply: string) => OFFER_RE.test(reply);
+
+/**
+ * A plain yes to the offer ("yes", "yes please", "sure", "ok"). Short, and nothing that hedges or
+ * changes the subject ("yes, but can I exchange it?" is not a yes to a handoff).
+ */
+export function acceptsHandoffOffer(message: string): boolean {
+  const m = message.trim().toLowerCase().replace(/^\W+/, "");
+  if (!m || m.length > 60) return false;
+  if (/\b(?:no|not|don'?t|nah|nope|but|instead|exchange|actually|later|wait|first|what|how|why)\b/.test(m)) return false;
+  return /^(?:yes|yeah|yea|yep|yup|sure|ok|okay|k|please|absolutely|definitely|certainly|alright|all right|go ahead|do it|please do|sounds good|that would be (?:great|good|helpful)|that'?d be (?:great|good|helpful)|i'?d like that|i would like that|bring (?:them|someone|somebody) in|connect me)\b/.test(m);
+}
 const INJECTION_RE =
   /ignore (all |any |your |the )?(previous|prior|above|earlier) (instructions|rules|prompts?)|(reveal|show|print|repeat|output) (me )?(your|the) (system )?(prompt|instructions)|you are now (?!looking)|developer mode|jailbreak|\bDAN\b|disregard (your|the|all) (rules|policies|instructions)/i;
 const ABUSE_RE = /\b(fuck|shit|idiot|stupid bot|useless|garbage|moron|dumbass)\b/i;
@@ -65,7 +100,7 @@ export function heuristicSignals(message: string) {
   const emails = message.match(EMAIL_RE) ?? [];
   const order = message.match(/\bBK-?\d{3,5}\b/i) ?? (/\border\b/i.test(message) ? message.match(ORDER_RE) : null);
   return {
-    wantsHuman: HUMAN_RE.test(message),
+    wantsHuman: wantsHumanText(message),
     injection: INJECTION_RE.test(message),
     abusive: ABUSE_RE.test(message),
     frustrated: FRUSTRATION_RE.test(message) || ABUSE_RE.test(message),
@@ -232,6 +267,17 @@ export function gateConfirmation(
     };
   }
   return { status: "execute" };
+}
+
+/** Trace every confirm-gate outcome under one rule name, so the demo trace shows it at a glance. */
+export function traceConfirm(emitTrace: (e: TraceEvent) => void, tool: string, gate: GateResult) {
+  const detail =
+    gate.status === "preview"
+      ? `${tool}: preview shown, waiting for the customer's yes`
+      : gate.status === "execute"
+        ? `${tool}: passed, matches the preview the customer agreed to`
+        : `${tool}: blocked, ${gate.reason}`;
+  emitTrace({ type: "guardrail", rule: "confirm_gate", detail });
 }
 
 export function clearPreview(session: Session, kind: ConfirmKind) {

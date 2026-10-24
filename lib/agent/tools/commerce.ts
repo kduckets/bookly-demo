@@ -2,9 +2,9 @@ import { z } from "zod";
 import { allOrders } from "@/data/orders";
 import { POLICY_NUMBERS } from "@/data/policies";
 import { addItem, removeItem } from "@/lib/cart";
-import { canonicalKey, clearPreview, gateConfirmation } from "../guardrails";
+import { canonicalKey, clearPreview, gateConfirmation, traceConfirm } from "../guardrails";
 import { resolveOrder } from "../gate";
-import { cartView, setCartItems } from "../session";
+import { cartView, logAction, setCartItems } from "../session";
 import { defineTool, fail, ok } from "./types";
 import { maskEmail, money, resolveBook, shortId } from "./util";
 
@@ -76,8 +76,8 @@ export const checkout = defineTool({
     ];
     const key = canonicalKey({ items: cart.items.map((i) => `${i.bookId}:${i.format}:${i.quantity}`).join("|"), m: input.shipping_method });
     const gate = gateConfirmation(s, "checkout", key, input.confirm, lines.join("; "));
+    traceConfirm(ctx.emitTrace, "checkout", gate);
     if (gate.status === "rejected") {
-      ctx.emitTrace({ type: "guardrail", rule: "confirmation_required", detail: `checkout: ${gate.reason}` });
       return fail(gate.reason);
     }
     if (gate.status === "preview") {
@@ -97,6 +97,7 @@ export const checkout = defineTool({
       total,
     };
     allOrders().push(order);
+    logAction(s, `Order placed: ${orderId}, ${money(total)}`);
     s.verifiedOrderIds.push(orderId);
     resolveOrder(s, orderId);
     setCartItems(s.shopperId, []);
@@ -136,8 +137,8 @@ export const purchaseGiftCard = defineTool({
       d: input.delivery_date ?? "",
     });
     const gate = gateConfirmation(ctx.session, "gift_card", key, input.confirm, lines.join("; "));
+    traceConfirm(ctx.emitTrace, "purchase_gift_card", gate);
     if (gate.status === "rejected") {
-      ctx.emitTrace({ type: "guardrail", rule: "confirmation_required", detail: `purchase_gift_card: ${gate.reason}` });
       return fail(gate.reason);
     }
     if (gate.status === "preview") {
@@ -145,6 +146,7 @@ export const purchaseGiftCard = defineTool({
       return ok({ preview: lines, next_step: "Show this to the customer and ask them to confirm." });
     }
     const ref = shortId("GC");
+    logAction(ctx.session, `Gift card sent: ${money(input.amount)} to ${input.recipient_name} (${ref})`);
     clearPreview(ctx.session, "gift_card");
     ctx.emitUI({ type: "confirmation", kind: "gift_card", stage: "done", title: "Gift card sent", lines, reference: ref });
     return ok({ gift_card_reference: ref, status: input.delivery_date ? `scheduled for ${input.delivery_date}` : "sent" });
