@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { CartItem, ConfirmKind, Cart } from "@/lib/types";
 import type { Intent } from "./slots";
+import type { Candidate } from "./match";
 
 /**
  * In-memory session state, keyed by session ID. Fine for a prototype; production would use
@@ -22,6 +23,8 @@ export interface Session {
   /** Top-level system prompt, frozen at session start (keeps the prompt cache and thinking valid). */
   systemPrompt: string;
   personaHash: string;
+  /** Procedure versions the model has seen, to detect edits made mid-conversation. */
+  procedureVersions: Record<string, number>;
   /** Append-only Messages API history, including thinking and tool blocks. */
   history: Anthropic.Beta.BetaMessageParam[];
   /** Plain-text transcript for handoff summaries. */
@@ -35,6 +38,11 @@ export interface Session {
   activeIntent: Intent | null;
   slots: Record<string, string>;
   verifiedOrderIds: string[];
+  /** Disambiguation: books and orders the customer has settled on, and the open choices. */
+  resolvedBooks: string[];
+  pendingBooks: Candidate[];
+  resolvedOrders: string[];
+  pendingOrders: string[];
   previews: Partial<Record<ConfirmKind, PendingPreview>>;
   ticketId?: string;
   /** Reader requests added in this conversation (capped to prevent spam). */
@@ -58,6 +66,7 @@ export function createSession(init: {
   shopperId: string;
   systemPrompt: string;
   personaHash: string;
+  procedureVersions: Record<string, number>;
   turnLimit: number;
 }): Session {
   // Prototype housekeeping: drop sessions idle for more than three hours.
@@ -75,6 +84,10 @@ export function createSession(init: {
     activeIntent: null,
     slots: {},
     verifiedOrderIds: [],
+    resolvedBooks: [],
+    pendingBooks: [],
+    resolvedOrders: [],
+    pendingOrders: [],
     previews: {},
     requestsAdded: 0,
     messageTimes: [],

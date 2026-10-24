@@ -13,6 +13,8 @@ import { createSession, getSession, type Session } from "./session";
 import { missingSlots, type Intent } from "./slots";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
 import { openTicket, summaryFromSession } from "./tools/escalation";
+import { resolveFromCustomer } from "./gate";
+import { activeProcedure, changedProceduresBlock, getProcedure, proceduresBlock, procedureSnapshot } from "./procedures";
 import { buildFacts, checkReply, regenerationNote, sanitize, type CheckResult } from "./output-check";
 
 /**
@@ -65,8 +67,9 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
   const s = getSession(input.sessionId) ?? createSession({
     id: input.sessionId,
     shopperId: input.shopperId,
-    systemPrompt: buildSystemPrompt(persona),
+    systemPrompt: buildSystemPrompt(persona, proceduresBlock(input.shopperId)),
     personaHash: hash(persona),
+    procedureVersions: procedureSnapshot(input.shopperId),
     turnLimit: clampTurnLimit(input.turnLimit),
   });
 
@@ -95,6 +98,9 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
   const { result: pre, ms } = await runPrecheck({ message, lastAssistant, activeIntent: s.activeIntent, persona });
   trace({ type: "precheck", label: pre.label, intent: pre.intent, frustrated: pre.frustrated, wantsHuman: pre.wantsHuman, source: pre.source, ms });
   updateSlots(s, pre);
+  // Settle any book or order the customer named or picked, before the model acts.
+  const picked = resolveFromCustomer(s, message);
+  if (picked.length) trace({ type: "guardrail", rule: "disambiguation_pick", detail: `customer settled on: ${picked.join(", ")}` });
   trace({ type: "slots", intent: s.activeIntent ?? "none", collected: s.slots, missing: missingSlots(s.activeIntent, s.slots) });
   s.transcript.push({ role: "user", text: message });
 
@@ -114,10 +120,14 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
   // 4–6. The agent loop
   const personaChanged = hash(persona) !== s.personaHash ? persona : undefined;
   if (personaChanged) s.personaHash = hash(persona);
-  const context = sessionContext(s, pre, { personaChanged });
+  // Procedure edits made mid-conversation ride in this turn's context message (append-only history).
+  const proceduresChanged = changedProceduresBlock(s.shopperId, s.procedureVersions);
+  if (proceduresChanged) s.procedureVersions = procedureSnapshot(s.shopperId);
+  const context = sessionContext(s, pre, { personaChanged, proceduresChanged });
   let usage;
   try {
     usage = await agentLoop(s, message, context, emit);
+    traceProcedure(s, usage.tools, emit);
   } catch (err) {
     s.turn -= 1; // a failed call shouldn't cost the customer a turn
     s.transcript.pop();
@@ -140,7 +150,7 @@ export async function handleTurn(input: TurnInput, emit: Emit): Promise<void> {
 async function agentLoop(s: Session, message: string, context: string, emit: Emit) {
   client ??= new Anthropic();
   let turn: Anthropic.Beta.BetaMessageParam[] = userMessage(message, context);
-  const usage = { iterations: 0, input: 0, output: 0, cacheRead: 0 };
+  const usage = { iterations: 0, input: 0, output: 0, cacheRead: 0, tools: [] as string[] };
   const earlierText: string[] = []; // text written alongside tool calls this turn
   let finalText = "";
   let jsonRetries = 0;
@@ -219,6 +229,7 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
     if (text) earlierText.push(text);
     turn.push({ role: "assistant", content: msg.content });
     const toolUses = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    usage.tools.push(...toolUses.map((t) => t.name));
 
     // Execute every requested tool, then return all results in one user message.
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
@@ -240,6 +251,14 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
   if (finalText) emit({ type: "text", delta: finalText });
   commit(s, turn, finalText);
   return usage;
+}
+
+/** Record which procedure (and which version of it) governed this turn. */
+function traceProcedure(s: Session, toolsUsed: string[], emit: Emit) {
+  const id = activeProcedure(s.activeIntent, toolsUsed);
+  if (!id) return;
+  const p = getProcedure(s.shopperId, id);
+  emit({ type: "trace", event: { type: "procedure", id, title: p.title, version: p.version, edited: !p.isDefault } });
 }
 
 function emitCheck(emit: Emit, result: CheckResult, regenerated: boolean, sanitized: boolean) {

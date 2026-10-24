@@ -54,6 +54,21 @@ function Row({ e }: { e: TraceEvent }) {
           <b className="text-amber-600">guardrail</b> {e.rule}: {e.detail}
         </span>
       );
+    case "match":
+      return (
+        <span>
+          <b className="text-stone-900">match</b> {e.verdict}
+          {e.resolved && ` → ${e.resolved}`}
+          {e.candidates.length > 0 && ` [${e.candidates.join("; ")}]`} <span className="text-stone-400">({e.reason})</span>
+        </span>
+      );
+    case "procedure":
+      return (
+        <span>
+          <b className="text-stone-900">procedure</b> {e.id} v{e.version}
+          {e.edited ? " (edited)" : " (default)"}
+        </span>
+      );
     case "output_check":
       return (
         <span>

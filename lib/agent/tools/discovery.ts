@@ -3,26 +3,8 @@ import { CATALOG, getBook, locationLabel } from "@/data/catalog";
 import type { Book } from "@/lib/types";
 import { defineTool, fail, ok } from "./types";
 import { bookForModel, normalize, resolveBook, summarize } from "./util";
-
-const STOP = new Set(["the", "a", "an", "of", "and", "or", "by", "book", "books", "one", "about", "to", "in", "on", "is", "that", "with", "for", "do", "you", "have"]);
-
-function scoreBook(b: Book, terms: string[]): number {
-  const title = normalize(b.title);
-  const author = normalize(b.author);
-  const themes = b.themes.map(normalize).join(" ");
-  const sub = b.subgenres.map(normalize).join(" ");
-  const desc = normalize(b.description);
-  let s = 0;
-  for (const t of terms) {
-    if (title.split(" ").includes(t)) s += 5;
-    else if (title.includes(t)) s += 3;
-    if (author.includes(t)) s += 4;
-    if (themes.includes(t)) s += 3;
-    if (sub.includes(t)) s += 2;
-    if (desc.includes(t)) s += 1;
-  }
-  return s;
-}
+import { expandAliases, matchVerdict, scoreBook, terms, type Scored } from "../match";
+import { recordShown, recordVerdict } from "../gate";
 
 export const searchCatalog = defineTool({
   name: "search_catalog",
@@ -38,9 +20,7 @@ export const searchCatalog = defineTool({
     display: z.boolean().optional(),
   }),
   run(input, ctx) {
-    const terms = normalize(input.query ?? "")
-      .split(" ")
-      .filter((t) => t.length > 1 && !STOP.has(t));
+    const ts = terms(expandAliases(input.query ?? ""));
     let pool = CATALOG.slice();
     if (input.author) {
       const a = normalize(input.author);
@@ -53,19 +33,32 @@ export const searchCatalog = defineTool({
       );
     }
     if (input.themes?.length) {
-      const ts = input.themes.map(normalize);
-      pool = pool.filter((b) => b.themes.some((t) => ts.some((x) => normalize(t).includes(x) || x.includes(normalize(t)))));
+      const wanted = input.themes.map(normalize);
+      pool = pool.filter((b) => b.themes.some((t) => wanted.some((x) => normalize(t).includes(x) || x.includes(normalize(t)))));
     }
     if (input.max_price != null) pool = pool.filter((b) => b.price <= input.max_price!);
 
-    let ranked = pool.map((b) => ({ b, s: terms.length ? scoreBook(b, terms) : 1 }));
-    if (terms.length) ranked = ranked.filter((r) => r.s > 0);
-    ranked.sort((x, y) => y.s - x.s);
+    // A requested theme counts more when it's the book's main subject (e.g. a "war novel"), so
+    // "Vonnegut + war" ranks Slaughterhouse-Five above a book where war is a side theme.
+    const wanted = (input.themes ?? []).map(normalize);
+    const themeBonus = (b: Book) =>
+      wanted.reduce((n, t) => n + (b.subgenres.some((s) => normalize(s).includes(t)) ? 2 : 0) + (normalize(b.themes[0] ?? "") === t ? 1 : 0), 0);
+    let ranked: Scored[] = pool.map((b) => {
+      const sc = ts.length ? scoreBook(b, ts) : { b, score: 1, relevance: 1 };
+      const bonus = themeBonus(b);
+      return { b, score: sc.score + bonus, relevance: sc.relevance + bonus };
+    });
+    if (ts.length) ranked = ranked.filter((r) => r.score > 0);
+    ranked.sort((x, y) => y.score - x.score);
+
+    // The verdict decides whether this points at one book, several, or a browse.
+    const verdict = matchVerdict(input, ranked);
+    recordVerdict(ctx, verdict);
     const results = ranked.slice(0, input.limit ?? 6).map((r) => r.b);
 
     if (input.display && results.length) ctx.emitUI({ type: "book_cards", books: results.map(summarize) });
-    if (!results.length) return ok({ results: [], note: "No catalog matches. Do not suggest books we don't carry as purchasable." });
-    return ok({ count: results.length, results: results.map(bookForModel) });
+    if (!results.length) return ok({ match: "none", results: [], note: "No catalog matches. Do not suggest books we don't carry as purchasable." });
+    return ok({ ...verdict, count: results.length, results: results.map(bookForModel) });
   },
 });
 
@@ -136,6 +129,7 @@ export const recommend = defineTool({
       .sort((x, y) => y.s - x.s)
       .slice(0, input.limit ?? 4);
     if (!top.length) return ok({ results: [], note: "Nothing in the catalog matches well. Say so honestly." });
+    recordShown(ctx.session, top.map((x) => x.b));
     ctx.emitUI({ type: "book_cards", books: top.map((x) => summarize(x.b)) });
     return ok({
       shown_to_customer_as_cards: true,

@@ -142,14 +142,12 @@ bk("scifi", "sf-brave-new-world", "Brave New World", "Aldous Huxley", 1932, ["dy
   "In a future engineered for contentment, an outsider raised on Shakespeare asks what happiness costs when nobody is allowed to be unhappy.", { related: ["sf-nineteen-eighty-four", "sf-fahrenheit-451", "kv-player-piano"] });
 bk("scifi", "sf-nineteen-eighty-four", "Nineteen Eighty-Four", "George Orwell", 1949, ["dystopian"], ["surveillance", "power", "propaganda", "language", "dystopia", "freedom"], 16.0,
   "A records clerk who rewrites history for the state starts keeping a private diary, which is itself a crime.", { related: ["sf-brave-new-world", "sf-fahrenheit-451", "kv-mother-night"] });
-bk("scifi", "sf-solaris", "Solaris", "Stanisław Lem", 1961, ["philosophical sf"], ["contact", "mind", "memory", "science", "grief"], 17.0,
-  "Scientists orbiting an ocean planet find their buried memories walking the station halls, and no theory explains why.", { related: ["sf-ubik", "sf-childhoods-end", "st-what-is-life"] });
 bk("scifi", "sf-do-androids-dream", "Do Androids Dream of Electric Sheep?", "Philip K. Dick", 1968, ["noir sf"], ["AI", "empathy", "identity", "ecology", "religion"], 16.0,
   "A bounty hunter retiring escaped androids in a dusty, irradiated San Francisco starts to doubt the test that separates them from people.", { related: ["sf-ubik", "sf-neuromancer", "st-alignment-problem", "sf-man-in-the-high-castle"] });
 bk("scifi", "sf-ubik", "Ubik", "Philip K. Dick", 1969, ["metaphysical sf"], ["reality", "time", "death", "commerce"], 16.0,
-  "After a botched job on the Moon, a team of anti-psychics watches the world decay backward in time, and only a spray can seems to help.", { related: ["sf-do-androids-dream", "sf-solaris", "kv-slaughterhouse-five"] });
+  "After a botched job on the Moon, a team of anti-psychics watches the world decay backward in time, and only a spray can seems to help.", { related: ["sf-do-androids-dream", "kv-slaughterhouse-five"] });
 bk("scifi", "sf-childhoods-end", "Childhood's End", "Arthur C. Clarke", 1953, ["first contact"], ["contact", "evolution", "utopia", "religion", "apocalypse"], 16.0,
-  "Benevolent aliens end war and poverty overnight, but they refuse to show their faces or explain what they are waiting for.", { related: ["sf-solaris", "kv-galapagos", "sf-foundation"] });
+  "Benevolent aliens end war and poverty overnight, but they refuse to show their faces or explain what they are waiting for.", { related: ["kv-galapagos", "sf-foundation"] });
 bk("scifi", "sf-stranger-in-a-strange-land", "Stranger in a Strange Land", "Robert A. Heinlein", 1961, ["social sf"], ["religion", "love", "freedom", "satire", "culture"], 18.0,
   "A man raised by Martians returns to Earth and finds human customs baffling, then starts a movement of his own.", { related: ["sf-moon-is-a-harsh-mistress", "kv-cats-cradle"] });
 bk("scifi", "sf-snow-crash", "Snow Crash", "Neal Stephenson", 1992, ["cyberpunk", "satire"], ["language", "computing", "religion", "satire", "technology"], 18.0,

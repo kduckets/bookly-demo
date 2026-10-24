@@ -28,6 +28,23 @@ export const ORDERS: Order[] = [
     ],
     total: 44.99,
   },
+  // Same email: a second delivered, return-eligible order, so "I want to return a book" must ask which.
+  {
+    orderId: "BK-1071",
+    purchasedAt: "Ice-Nine Bookshop",
+    email: "billy.pilgrim@example.com",
+    status: "delivered",
+    placedAt: ago(16),
+    shippedAt: ago(15),
+    deliveredAt: ago(12),
+    carrier: "USPS",
+    trackingNumber: "9400 1000 0000 0000 1071",
+    shippingMethod: "standard",
+    items: [
+      { itemId: "1071-1", bookId: "kv-breakfast-of-champions", title: "Breakfast of Champions", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
+    ],
+    total: 16.99 + 4.99,
+  },
   // Same email: shipped and in transit with tracking.
   {
     orderId: "BK-1057",
@@ -42,9 +59,9 @@ export const ORDERS: Order[] = [
     shippingMethod: "standard",
     items: [
       { itemId: "1057-1", bookId: "st-cosmos", title: "Cosmos", kind: "book", format: "paperback", quantity: 1, price: 19.99 },
-      { itemId: "1057-2", bookId: "sf-solaris", title: "Solaris", kind: "book", format: "paperback", quantity: 1, price: 16.99 },
+      { itemId: "1057-2", bookId: "sf-ubik", title: "Ubik", kind: "book", format: "paperback", quantity: 1, price: 15.99 },
     ],
-    total: 36.98,
+    total: 35.98,
   },
   // Same email: still processing, not yet shipped.
   {

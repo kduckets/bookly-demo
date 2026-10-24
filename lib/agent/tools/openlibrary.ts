@@ -4,6 +4,7 @@ import { catalogMatch, searchWorks, subjectWorks } from "@/lib/openlibrary";
 import type { ExternalBook } from "@/lib/types";
 import { addWanted, sortedWanted } from "@/lib/wanted";
 import { defineTool, fail, ok } from "./types";
+import { recordShown } from "../gate";
 import { normalize, resolveBook, summarize } from "./util";
 
 const UNTRUSTED =
@@ -94,7 +95,10 @@ export const findRelatedBooks = defineTool({
       const related = dedupe(pools.flat()).filter((b) => b.key !== work.key && b.booklyBookId !== seedKey && b.booklyBookId !== seed?.id);
       const sold = related.filter((b) => b.booklyBookId).slice(0, limit);
       const notStocked = related.filter((b) => !b.booklyBookId).slice(0, limit);
-      if (sold.length) ctx.emitUI({ type: "book_cards", books: sold.map((b) => summarize(getBook(b.booklyBookId!)!)) });
+      if (sold.length) {
+        recordShown(ctx.session, sold.map((b) => getBook(b.booklyBookId!)!));
+        ctx.emitUI({ type: "book_cards", books: sold.map((b) => summarize(getBook(b.booklyBookId!)!)) });
+      }
       if (notStocked.length) ctx.emitUI({ type: "external_books", source: "open_library", books: notStocked });
       return ok({
         source: "Open Library",

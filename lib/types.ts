@@ -161,6 +161,8 @@ export type TraceEvent =
   | { type: "tool_call"; name: string; input: unknown; output: string; ok: boolean; ms: number }
   | { type: "guardrail"; rule: string; detail: string }
   | { type: "slots"; intent: string; collected: Record<string, string>; missing: string[] }
+  | { type: "match"; verdict: string; resolved?: string; candidates: string[]; reason: string }
+  | { type: "procedure"; id: string; title: string; version: number; edited: boolean }
   | {
       type: "output_check";
       passed: boolean;

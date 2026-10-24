@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_PERSONA } from "@/lib/agent/prompts/4-persona";
+import { DEFAULT_PERSONA } from "@/lib/agent/prompts/5-persona";
 import { load, newId, save } from "@/lib/client-storage";
 import type { Cart, Format, StreamEvent, TraceEvent, UIEvent } from "@/lib/types";
 
@@ -31,6 +31,8 @@ export interface ChatMessage {
 
 interface StoreState {
   ready: boolean;
+  /** Identifies this browser. Keys the cart and procedure edits on the server. */
+  shopperId: string;
   cart: Cart;
   addToCart: (bookId: string, format: Format) => Promise<string | null>;
   removeFromCart: (bookId: string, format: Format) => Promise<void>;
@@ -215,6 +217,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StoreState>(
     () => ({
       ready,
+      shopperId,
       cart,
       addToCart,
       removeFromCart,
@@ -240,7 +243,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       newConversation,
       wantedVersion,
     }),
-    [ready, cart, addToCart, removeFromCart, cartOpen, highlight, showOnShelf, selectedBookId, filters, settings, setSettings, settingsOpen, chatOpen, messages, sending, locked, turn, send, newConversation, wantedVersion],
+    [ready, shopperId, cart, addToCart, removeFromCart, cartOpen, highlight, showOnShelf, selectedBookId, filters, settings, setSettings, settingsOpen, chatOpen, messages, sending, locked, turn, send, newConversation, wantedVersion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

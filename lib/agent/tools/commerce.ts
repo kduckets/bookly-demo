@@ -3,6 +3,7 @@ import { allOrders } from "@/data/orders";
 import { POLICY_NUMBERS } from "@/data/policies";
 import { addItem, removeItem } from "@/lib/cart";
 import { canonicalKey, clearPreview, gateConfirmation } from "../guardrails";
+import { resolveOrder } from "../gate";
 import { cartView, setCartItems } from "../session";
 import { defineTool, fail, ok } from "./types";
 import { maskEmail, money, resolveBook, shortId } from "./util";
@@ -97,6 +98,7 @@ export const checkout = defineTool({
     };
     allOrders().push(order);
     s.verifiedOrderIds.push(orderId);
+    resolveOrder(s, orderId);
     setCartItems(s.shopperId, []);
     clearPreview(s, "checkout");
     ctx.emitUI({ type: "cart_updated", cart: cartView(s.shopperId) });

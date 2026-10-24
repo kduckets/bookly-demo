@@ -2,13 +2,13 @@ import type { Session } from "../session";
 import { cartView } from "../session";
 import { missingSlots } from "../slots";
 import { LIMITS, type Precheck } from "../guardrails";
-import { personaBlock } from "./4-persona";
+import { personaBlock } from "./5-persona";
 
 /**
- * Layer 5 — Session context (dynamic). Rebuilt every turn from server state and appended to the
+ * Layer 6 — Session context (dynamic). Rebuilt every turn from server state and appended to the
  * conversation as a mid-conversation system message, so the frozen system prompt never changes.
  */
-export function sessionContext(s: Session, pre: Precheck, opts: { personaChanged?: string } = {}): string {
+export function sessionContext(s: Session, pre: Precheck, opts: { personaChanged?: string; proceduresChanged?: string | null } = {}): string {
   const remaining = s.turnLimit - s.turn;
   const cart = cartView(s.shopperId);
   const missing = missingSlots(s.activeIntent, s.slots);
@@ -36,6 +36,7 @@ export function sessionContext(s: Session, pre: Precheck, opts: { personaChanged
   } else if (remaining <= LIMITS.warnBeforeLimit) {
     lines.push("The conversation is getting long. If things aren't resolved, gently mention that you can bring in a human colleague.");
   }
+  if (opts.proceduresChanged) lines.push(`The operator updated these procedures. Follow the new versions from now on:\n${opts.proceduresChanged}`);
   if (opts.personaChanged) lines.push(`The operator updated the persona. Use this voice from now on:\n${personaBlock(opts.personaChanged)}`);
   return `<session_context>\n${lines.join("\n")}\n</session_context>`;
 }

@@ -7,6 +7,7 @@ import { escalateToHuman } from "./escalation";
 import { addToReaderRequests, findRelatedBooks, searchOpenLibrary, viewReaderRequests } from "./openlibrary";
 import { checkReturnEligibility, initiateExchange, initiateReturn, listOrdersForEmail, lookupOrder } from "./orders";
 import type { ToolContext, ToolDef, ToolOutcome } from "./types";
+import { checkGate } from "../gate";
 
 /** The full tool registry. Order is fixed so the tools array (and the prompt cache) stays stable. */
 export const TOOLS: ToolDef[] = [
@@ -63,6 +64,9 @@ export async function executeTool(name: string, input: unknown, ctx: ToolContext
   if (!parsed.success) {
     return { ok: false, data: { error: "Invalid input", issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) } };
   }
+  // The disambiguation gate: never act on a book or order the customer hasn't settled on.
+  const blocked = checkGate(name, parsed.data as Record<string, unknown>, ctx);
+  if (blocked) return blocked;
   try {
     return await tool.run(parsed.data, ctx);
   } catch (err) {

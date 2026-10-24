@@ -6,6 +6,7 @@ import type { Format, Order, OrderItem } from "@/lib/types";
 import { canonicalKey, clearPreview, gateConfirmation } from "../guardrails";
 import type { Session } from "../session";
 import { defineTool, fail, ok, type ToolOutcome } from "./types";
+import { recordOrderChoices, resolveOrder } from "../gate";
 import { daysSince, money, normalize, normalizeOrderId, orderForModel, orderView, resolveBook, shortId } from "./util";
 
 const NOT_FOUND = "We couldn't find an order matching that order number and email. Ask the customer to double-check both.";
@@ -65,6 +66,7 @@ export const lookupOrder = defineTool({
     if (!order) return fail(NOT_FOUND, "order_lookup");
     const s = ctx.session;
     if (!s.verifiedOrderIds.includes(order.orderId)) s.verifiedOrderIds.push(order.orderId);
+    resolveOrder(s, order.orderId); // order number + email names the order exactly
     s.slots.order_id = order.orderId;
     s.slots.email = order.email;
     ctx.emitUI({ type: "order_card", order: orderView(order) });
@@ -85,8 +87,16 @@ export const listOrdersForEmail = defineTool({
     for (const o of orders) if (!s.verifiedOrderIds.includes(o.orderId)) s.verifiedOrderIds.push(o.orderId);
     s.slots.email = email;
     if (orders.length === 1) s.slots.order_id = orders[0].orderId;
+    // Several orders: the customer must pick one, unless only one is eligible for what they asked.
+    let whichOrder = orders.length === 1 ? `resolved: ${orders[0].orderId} (their only order)` : "ask the customer which order they mean";
+    const want = s.activeIntent === "return" ? "return_eligible" : s.activeIntent === "exchange" ? "exchange_eligible" : null;
+    const eligible = want ? orders.filter((o) => o.items.some((it) => eligibility(o, it)[want])) : [];
+    if (orders.length > 1 && eligible.length === 1) {
+      resolveOrder(s, eligible[0].orderId);
+      whichOrder = `resolved: ${eligible[0].orderId} (the only order eligible for a ${s.activeIntent})`;
+    } else recordOrderChoices(s, orders.map((o) => o.orderId));
     ctx.emitUI({ type: "order_list", orders: orders.map(orderView) });
-    return ok({ count: orders.length, orders: orders.map(orderForModel) });
+    return ok({ count: orders.length, which_order: whichOrder, orders: orders.map(orderForModel) });
   },
 });
 
