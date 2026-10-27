@@ -24,7 +24,7 @@ export function AgentBar() {
   return (
     <form
       role="search"
-      aria-label="Ask the Ice-Nine Bookshop clerk"
+      aria-label="Ask the Ice-Nine Books clerk"
       className="flex w-full items-center rounded-full border border-stone-200 bg-stone-100 transition focus-within:border-stone-400 focus-within:bg-white"
       onSubmit={(e) => {
         e.preventDefault();

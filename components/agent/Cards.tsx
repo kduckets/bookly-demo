@@ -68,6 +68,7 @@ export function Cards({ events, isLatest }: { events: UIEvent[]; isLatest: boole
           );
         if (e.type === "confirmation") return <ConfirmCard key={i} event={e} active={isLatest} />;
         if (e.type === "handoff") return <HandoffCard key={i} event={e} />;
+        if (e.type === "policy_decision") return <DecisionCard key={i} event={e} active={isLatest} />;
         return null;
       })}
     </div>
@@ -188,6 +189,38 @@ function ConfirmCard({ event, active }: { event: Extract<UIEvent, { type: "confi
           <button type="button" disabled={sending} onClick={() => send("Not yet. I'd like to change something.")} className="h-8 rounded-lg border border-stone-200 px-3 text-xs hover:border-stone-400 disabled:opacity-40">
             Not yet
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionCard({ event, active }: { event: Extract<UIEvent, { type: "policy_decision" }>; active: boolean }) {
+  const { send, sending, locked } = useStore();
+  return (
+    <div className={`${card} border-rose-200 bg-rose-50/40`}>
+      <p className="text-sm font-medium text-rose-900">{event.title}</p>
+      <ul className="mt-1.5 space-y-0.5 text-sm text-stone-600">
+        {event.lines.map((l, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="mt-2 h-1 w-1 flex-none rounded-full bg-rose-300" aria-hidden />
+            {l}
+          </li>
+        ))}
+      </ul>
+      {active && !locked && event.actions.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {event.actions.map((a, i) => (
+            <button
+              key={a.label}
+              type="button"
+              disabled={sending}
+              onClick={() => send(a.prompt)}
+              className={`h-8 rounded-lg px-3 text-xs font-medium disabled:opacity-40 ${i === 0 ? "bg-stone-900 text-white hover:bg-stone-700" : "border border-stone-200 hover:border-stone-400"}`}
+            >
+              {a.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

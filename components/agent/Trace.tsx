@@ -20,9 +20,10 @@ function keyMoments(events: TraceEvent[]): { label: string; tone: Tone }[] {
         const d = e.detail;
         out.push(d.includes("preview shown") ? { label: "confirm: preview", tone: "warn" } : d.includes("passed") ? { label: "confirm: passed", tone: "good" } : { label: "confirm: blocked", tone: "bad" });
       }
-      if (e.rule === "handoff") out.push({ label: "handoff", tone: "info" });
-      if (e.rule === "handoff_offered") out.push({ label: e.detail.includes("appended") ? "handoff offered (added)" : "handoff offered", tone: "info" });
-      if (e.rule === "handoff_accepted") out.push({ label: "offer accepted", tone: "info" });
+      if (e.rule === "handoff") out.push({ label: e.detail.startsWith("callback") ? "callback scheduled" : "handoff", tone: "info" });
+      if (e.rule === "handoff_offered") out.push({ label: e.detail.startsWith("added") ? "review offered (added)" : "review offered", tone: "info" });
+      if (e.rule === "handoff_accepted") out.push({ label: "review accepted", tone: "info" });
+      if (e.rule === "callback_dropped") out.push({ label: "callback dropped", tone: "warn" });
       if (e.rule === "open_library" && e.detail.includes("cache")) out.push({ label: "open library: cache", tone: "warn" });
       if (e.rule === "off_topic_redirect") out.push({ label: "off-topic redirect", tone: "info" });
     }

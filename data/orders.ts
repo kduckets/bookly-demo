@@ -28,11 +28,11 @@ export const ORDERS: Order[] = [
     ],
     total: 16.99 + 4.99,
   },
-  // Bought at the Ice-Nine Bookshop last month, delivered 45 days ago: past the 30-day return
+  // Bought at Ice-Nine Books last month, delivered 45 days ago: past the 30-day return
   // window, inside the 60-day exchange window. The demo's kind "no".
   {
     orderId: "BK-0977",
-    purchasedAt: "Ice-Nine Bookshop",
+    purchasedAt: "Ice-Nine Books",
     email: "kilgore.trout@example.com",
     status: "delivered",
     placedAt: ago(50),
@@ -69,7 +69,7 @@ export const ORDERS: Order[] = [
   // Same email: a second delivered, return-eligible order, so "I want to return a book" must ask which.
   {
     orderId: "BK-1071",
-    purchasedAt: "Ice-Nine Bookshop",
+    purchasedAt: "Ice-Nine Books",
     email: "billy.pilgrim@example.com",
     status: "delivered",
     placedAt: ago(16),
@@ -104,7 +104,7 @@ export const ORDERS: Order[] = [
   // Same email: shipped and in transit with tracking.
   {
     orderId: "BK-1057",
-    purchasedAt: "Ice-Nine Bookshop",
+    purchasedAt: "Ice-Nine Books",
     email: "billy.pilgrim@example.com",
     status: "shipped",
     placedAt: ago(3),
@@ -157,7 +157,7 @@ export const ORDERS: Order[] = [
   // Lost in transit: the agent should escalate rather than speculate.
   {
     orderId: "BK-0990",
-    purchasedAt: "Ice-Nine Bookshop",
+    purchasedAt: "Ice-Nine Books",
     email: "dwayne.hoover@example.com",
     status: "lost_in_transit",
     placedAt: ago(21),

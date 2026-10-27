@@ -51,7 +51,7 @@ export const POLICIES: Record<PolicyTopic, { title: string; text: string }> = {
       "Ebooks cannot be returned once downloaded.",
       "Gift cards cannot be returned.",
       "Return shipping is free; we email a prepaid label when the return is opened.",
-      "Orders from bookly.com or any Bookly shop, including the Ice-Nine Bookshop, can be returned through any of them, under this same policy.",
+      "Orders from bookly.com or any Bookly shop, including Ice-Nine Books, can be returned through any of them, under this same policy.",
     ].join(" "),
   },
   refunds: {
@@ -70,7 +70,7 @@ export const POLICIES: Record<PolicyTopic, { title: string; text: string }> = {
       "If the new item costs more, the difference is charged to the card on file; if it costs less, the difference is issued as store credit.",
       "Between 31 and 60 days after delivery, an exchange is the only option (no refund).",
       "Ebooks and gift cards cannot be exchanged.",
-      "Orders from bookly.com or any Bookly shop, including the Ice-Nine Bookshop, can be exchanged through any of them.",
+      "Orders from bookly.com or any Bookly shop, including Ice-Nine Books, can be exchanged through any of them.",
     ].join(" "),
   },
   gift_cards: {
@@ -78,7 +78,7 @@ export const POLICIES: Record<PolicyTopic, { title: string; text: string }> = {
     text: [
       "Bookly gift cards are available from $10 to $500.",
       "They are delivered by email on the date you choose, never expire, and have no fees.",
-      "A Bookly gift card can be used on bookly.com and at every Bookly shop, including the Ice-Nine Bookshop, and any remaining balance carries over between them.",
+      "A Bookly gift card can be used on bookly.com and at every Bookly shop, including Ice-Nine Books, and any remaining balance carries over between them.",
       "Gift cards are non-refundable and cannot be exchanged for cash.",
     ].join(" "),
   },

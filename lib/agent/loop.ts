@@ -5,14 +5,18 @@ import {
   LIMITS,
   acceptsHandoffOffer,
   checkRateLimit,
+  declinesCallback,
+  extractPhone,
+  maskPhones,
   offersPerson,
+  statesDecision,
   clampTurnLimit,
   runPrecheck,
   sanitizePersona,
   type Precheck,
 } from "./guardrails";
 import { DEFAULT_PERSONA, buildSystemPrompt, sessionContext } from "./prompts";
-import { createSession, getSession, type Session } from "./session";
+import { createSession, getSession, logAction, type PolicyNo, type Session } from "./session";
 import { missingSlots, type Intent } from "./slots";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
 import { openTicket, summaryFromSession } from "./tools/escalation";
@@ -63,7 +67,7 @@ export const AGENT_MODEL = MODEL;
 
 export async function handleTurn(input: TurnInput, rawEmit: Emit): Promise<void> {
   // Trace events never show a customer's full email address.
-  const emit: Emit = (e) => rawEmit(e.type === "trace" ? (JSON.parse(maskEmails(JSON.stringify(e))) as StreamEvent) : e);
+  const emit: Emit = (e) => rawEmit(e.type === "trace" ? (JSON.parse(maskPhones(maskEmails(JSON.stringify(e)))) as StreamEvent) : e);
   const started = Date.now();
   const ui = (event: UIEvent) => emit({ type: "ui", event });
   const trace = (event: TraceEvent) => emit({ type: "trace", event });
@@ -111,14 +115,31 @@ export async function handleTurn(input: TurnInput, rawEmit: Emit): Promise<void>
   s.transcript.push({ role: "user", text: message });
 
   if (pre.wantsHuman) return forcedHandoff(s, message, "Customer asked for a human", emit, started);
-  // A plain "yes" to the offer we made on the last reply hands off directly, without the model.
+  // Waiting for a callback number: a phone number opens the review ticket, "never mind" drops it,
+  // a number we can't read gets one more ask, and anything else means they've moved on.
+  const cb = s.awaitingCallback;
+  if (cb) {
+    const phone = extractPhone(message);
+    if (phone) {
+      s.awaitingCallback = undefined;
+      return callbackHandoff(s, message, cb, phone, emit, started);
+    }
+    if (!declinesCallback(message) && /\d{3}/.test(message) && cb.tries < 1) {
+      cb.tries++;
+      return scriptedReply(s, message, CALLBACK_REASK, emit, started);
+    }
+    s.awaitingCallback = undefined;
+    trace({ type: "guardrail", rule: "callback_dropped", detail: "no phone number given; continuing the conversation" });
+  }
+  // A plain "yes" to the review offer on the last reply starts the callback flow, in code.
   // The offer lasts one message. A preview awaiting confirmation from that same turn takes precedence.
   const offer = s.pendingHandoffOffer;
   s.pendingHandoffOffer = undefined;
   const previewWaiting = Object.values(s.previews).some((p) => p && p.turn === s.turn - 1);
   if (offer && offer.turn === s.turn - 1 && !previewWaiting && acceptsHandoffOffer(message)) {
-    trace({ type: "guardrail", rule: "handoff_accepted", detail: `customer said yes to the offer: ${offer.reason}` });
-    return forcedHandoff(s, message, "Customer accepted the offer to talk to a person", emit, started);
+    trace({ type: "guardrail", rule: "handoff_accepted", detail: `customer wants a human review of ${offer.subject}` });
+    s.awaitingCallback = { subject: offer.subject, decision: offer.decision, tries: 0 };
+    return scriptedReply(s, message, CALLBACK_ASK, emit, started);
   }
   if (pre.frustrated || pre.label === "abusive") s.frustrationCount += 1;
   if (s.frustrationCount >= LIMITS.frustrationThreshold)
@@ -171,7 +192,6 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
   s.handoffOfferDue = undefined;
   let turn: Anthropic.Beta.BetaMessageParam[] = userMessage(message, context);
   const usage = { iterations: 0, input: 0, output: 0, cacheRead: 0, tools: [] as string[] };
-  const earlierText: string[] = []; // text written alongside tool calls this turn
   let finalText = "";
   let jsonRetries = 0;
   let regenerated = false;
@@ -227,11 +247,20 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
     if (msg.stop_reason !== "tool_use") {
       // A tool call cut off by max_tokens is incomplete; never run it or keep it in history.
       const final: Anthropic.Beta.BetaMessageParam = { role: "assistant", content: msg.content.filter((b) => b.type !== "tool_use") };
-      finalText = [...earlierText, text].filter(Boolean).join("\n\n");
+      // Only the final reply reaches the customer. Text written alongside tool calls ("Different
+      // order, so list by email.") is the model's working note: it stays in history, not on screen.
+      finalText = text;
 
       // Output check: every price, ID, availability and policy claim must be grounded.
       const facts = buildFacts([...s.history, ...turn], s.transcript.filter((t) => t.role === "user").map((t) => t.text), { recommending });
       const result = checkReply(finalText, facts);
+      // Asked what to read next, with a book to go on: the reply must come from a catalog lookup,
+      // not from pointing at whatever cards happen to be on screen.
+      const lookedUp = usage.tools.some((n) => ["recommend", "search_catalog", "find_related_books"].includes(n));
+      if (recommending && s.resolvedBooks.length && !lookedUp) {
+        result.passed = false;
+        result.claims.push({ kind: "recommendation", text: "(no lookup this turn)", ok: false, reason: "the customer asked for recommendations; call recommend with the book they just found (seed_book_ids) and suggest from the results", sentence: -1 });
+      }
       if (result.passed) {
         emitCheck(emit, result, regenerated, false);
         turn.push(final);
@@ -253,7 +282,6 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
       break;
     }
 
-    if (text) earlierText.push(text);
     turn.push({ role: "assistant", content: msg.content });
     const toolUses = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
     usage.tools.push(...toolUses.map((t) => t.name));
@@ -275,18 +303,26 @@ async function agentLoop(s: Session, message: string, context: string, emit: Emi
     turn.push({ role: "user", content: results });
   }
 
-  // After a policy "no", the reply must offer a person. If the draft doesn't, add the standard line.
-  if (s.handoffOfferDue) {
-    const reason = s.handoffOfferDue;
+  // After a policy "no", the reply must say the "no" plainly and offer a human review by phone.
+  // Whatever the draft is missing is added in code: the decision on top, the offer at the end.
+  // (Read through a cast: a tool sets this mid-loop, which TypeScript's narrowing can't see.)
+  const no = s.handoffOfferDue as PolicyNo | undefined;
+  if (no) {
     s.handoffOfferDue = undefined;
-    const inReply = offersPerson(finalText);
-    if (!inReply) {
-      finalText = finalText ? `${finalText}\n\n${HANDOFF_OFFER_LINE}` : HANDOFF_OFFER_LINE;
+    const prefix = statesDecision(finalText) ? "" : no.decision;
+    const suffix = offersPerson(finalText) ? "" : HANDOFF_OFFER_LINE;
+    if (prefix || suffix) {
+      finalText = [prefix, finalText, suffix].filter(Boolean).join("\n\n");
       const last = [...turn].reverse().find((m) => m.role === "assistant");
-      if (last && Array.isArray(last.content)) (last.content as Anthropic.Beta.BetaContentBlockParam[]).push({ type: "text", text: `\n\n${HANDOFF_OFFER_LINE}` });
+      if (last && Array.isArray(last.content)) {
+        const blocks = last.content as Anthropic.Beta.BetaContentBlockParam[];
+        if (prefix) blocks.splice(blocks.findIndex((b) => b.type !== "thinking" && b.type !== "redacted_thinking") >>> 0, 0, { type: "text", text: `${prefix}\n\n` });
+        if (suffix) blocks.push({ type: "text", text: `\n\n${suffix}` });
+      }
     }
-    s.pendingHandoffOffer = { reason, turn: s.turn };
-    emit({ type: "trace", event: { type: "guardrail", rule: "handoff_offered", detail: inReply ? "offer was in the reply" : "offer appended to the reply" } });
+    s.pendingHandoffOffer = { ...no, turn: s.turn };
+    const added = [prefix && "decision", suffix && "review offer"].filter(Boolean).join(" and ");
+    emit({ type: "trace", event: { type: "guardrail", rule: "handoff_offered", detail: added ? `added ${added} to the reply` : "decision and review offer were in the reply" } });
   }
   if (finalText) emit({ type: "text", delta: finalText });
   commit(s, turn, finalText);
@@ -355,6 +391,34 @@ function updateSlots(s: Session, pre: Precheck) {
   if (!keep.includes(pre.intent)) s.activeIntent = pre.intent;
   else if (!s.activeIntent && pre.intent === "discuss_book") s.activeIntent = pre.intent;
   for (const [k, v] of Object.entries(pre.slots)) s.slots[k] = v;
+}
+
+const CALLBACK_ASK = "Happy to set that up. What's the best phone number for our team to reach you? A person will call you to review it.";
+const CALLBACK_REASK = "I just need a phone number with the area code, and someone from our team will call you.";
+
+/** A reply written by code, not the model (callback flow). Committed to history like any other turn. */
+function scriptedReply(s: Session, message: string, text: string, emit: Emit, started: number) {
+  emit({ type: "text", delta: text });
+  commit(s, [userMessage(message, null)[0], { role: "assistant", content: text }], text);
+  return finishTurn(s, emit, started, { iterations: 0, input: 0, output: 0, cacheRead: 0 });
+}
+
+/** The customer gave a callback number: open the review ticket and hand off. */
+function callbackHandoff(s: Session, message: string, cb: PolicyNo, phone: string, emit: Emit, started: number) {
+  const last4 = phone.replace(/\D/g, "").slice(-4);
+  s.callbackPhone = phone;
+  logAction(s, `Human review requested for ${cb.subject}; callback to the number ending in ${last4}`);
+  const reason = `Human review requested: ${cb.decision}`;
+  const eta = `A Bookly team member will call you at the number ending in ${last4} within one business day (Mon–Sat, 8am–8pm ET).`;
+  const ticket = openTicket({ session: s, emitUI: (event) => emit({ type: "ui", event }) }, reason, summaryFromSession(s, reason), eta);
+  emit({ type: "trace", event: { type: "guardrail", rule: "handoff", detail: `callback scheduled for ${cb.subject}` } });
+  const text = `Thanks. I've opened a review (ticket ${ticket.ticket_id}). A person on our team will call you at the number ending in ${last4} within one business day. I've passed along everything we covered, so you won't have to repeat yourself.`;
+  emit({ type: "text", delta: text });
+  commit(s, [userMessage(message, null)[0], { role: "assistant", content: text }], text);
+  s.locked = true;
+  s.lockReason = "Human review requested";
+  emit({ type: "ui", event: { type: "session_locked", reason: s.lockReason } });
+  return finishTurn(s, emit, started, { iterations: 0, input: 0, output: 0, cacheRead: 0 });
 }
 
 /** Deterministic handoff: open a ticket from session state and stop taking requests. */

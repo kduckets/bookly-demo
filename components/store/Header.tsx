@@ -9,10 +9,10 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 h-[var(--header-h)] border-b border-stone-200 bg-white/85 backdrop-blur">
       <div className="mx-auto flex h-full max-w-7xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
-        <a href="#top" className="flex flex-none items-baseline gap-2" aria-label="Ice-Nine Bookshop, a Bookly shop. Back to top">
+        <a href="#top" className="flex flex-none items-baseline gap-2" aria-label="Ice-Nine Books, a Bookly shop. Back to top">
           <span className="text-xl font-semibold tracking-tight">Bookly</span>
           <span className="hidden text-stone-300 lg:inline" aria-hidden>/</span>
-          <span className="hidden text-sm font-medium text-stone-500 lg:inline">Ice-Nine Bookshop</span>
+          <span className="hidden text-sm font-medium text-stone-500 lg:inline">Ice-Nine Books</span>
         </a>
         <div className="mx-auto min-w-0 max-w-2xl flex-1">
           <AgentBar />

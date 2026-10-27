@@ -5,9 +5,9 @@ import { POLICY_NUMBERS } from "@/data/policies";
 import type { Format, Order, OrderItem } from "@/lib/types";
 import { canonicalKey, clearPreview, gateConfirmation, traceConfirm } from "../guardrails";
 import type { Session } from "../session";
-import { defineTool, fail, ok, type ToolOutcome } from "./types";
+import { defineTool, fail, ok, type ToolContext, type ToolOutcome } from "./types";
 import { recordOrderChoices, resolveOrder } from "../gate";
-import { logAction } from "../session";
+import { logAction, type PolicyNo } from "../session";
 import { daysSince, money, normalize, normalizeOrderId, orderForModel, orderView, resolveBook, shortId } from "./util";
 
 const NOT_FOUND = "We couldn't find an order matching that order number and email. Ask the customer to double-check both.";
@@ -27,6 +27,35 @@ function findItem(order: Order, ref: string): OrderItem | undefined {
     order.items.find((i) => i.bookId === ref) ??
     order.items.find((i) => normalize(i.title).includes(normalize(ref)))
   );
+}
+
+/**
+ * A policy "no", stated plainly. Shows a decision card with the facts and the customer's options,
+ * and tells the loop this turn's reply must state the decision and offer a human review.
+ */
+function policyNo(ctx: ToolContext, order: Order, item: OrderItem, e: ReturnType<typeof eligibility>, kind: "return" | "exchange"): PolicyNo {
+  const days = e.delivered_days_ago;
+  const { returnWindowDays: R, exchangeWindowDays: X } = POLICY_NUMBERS;
+  const pastWindow = days != null && order.status === "delivered" && !item.damaged && item.kind === "book" && !(item.format === "ebook" && item.downloaded) && !item.returned;
+  const what = kind === "return" ? "returned" : "exchanged";
+  const decision = pastWindow
+    ? `${item.title} can't be ${what}. It was delivered ${days} days ago, and ${kind === "return" ? `returns are accepted within ${R}` : `exchanges are accepted within ${X}`} days of delivery.`
+    : `${item.title} can't be ${what}. ${e.reason}`;
+  const lines = pastWindow
+    ? [
+        `Delivered ${days} days ago`,
+        kind === "return" ? `Returns are accepted within ${R} days of delivery` : `Exchanges are accepted within ${X} days of delivery`,
+        ...(kind === "return" && e.exchange_eligible ? [`It can still be exchanged until day ${X}`] : []),
+      ]
+    : [e.reason];
+  const actions = [
+    { label: "Ask a person to review it", prompt: "Yes, please have a person review it." },
+    ...(kind === "return" && e.exchange_eligible ? [{ label: "Exchange it instead", prompt: `I'd like to exchange ${item.title} instead.` }] : []),
+  ];
+  ctx.emitUI({ type: "policy_decision", title: `${item.title} can't be ${what}`, lines, actions });
+  const no: PolicyNo = { subject: `${item.title} (${order.orderId})`, decision };
+  ctx.session.handoffOfferDue = no;
+  return no;
 }
 
 /** The return/exchange policy, applied in code. The model cannot override this. */
@@ -114,8 +143,8 @@ export const checkReturnEligibility = defineTool({
     const e = eligibility(order, item);
     if (!e.return_eligible) {
       logAction(ctx.session, `Return declined for ${item.title} (${order.orderId}): ${e.reason}`);
-      ctx.session.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for a return: ${e.reason}`;
-      return ok({ ...e, offer_handoff: true, handoff_reason: "The customer may want a person to review this. Offer to bring someone in." });
+      const no = policyNo(ctx, order, item, e, "return");
+      return ok({ ...e, decision: no.decision, offer_handoff: true, handoff_reason: "State the decision plainly, then offer a human review: a person on our team can call the customer." });
     }
     return ok(e);
   },
@@ -143,8 +172,8 @@ export const initiateReturn = defineTool({
       const e = eligibility(order, item);
       if (!e.return_eligible) {
         ctx.emitTrace({ type: "guardrail", rule: "return_policy", detail: `${item.title}: ${e.reason}` });
-        s.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for a return: ${e.reason}`;
-        return fail(`Not eligible for return: ${e.reason}`, undefined, { exchange_eligible: e.exchange_eligible, offer_handoff: true });
+        const no = policyNo(ctx, order, item, e, "return");
+        return fail(`Not eligible for return: ${e.reason}`, undefined, { decision: no.decision, exchange_eligible: e.exchange_eligible, offer_handoff: true });
       }
       items.push(item);
     }
@@ -198,8 +227,8 @@ export const initiateExchange = defineTool({
     const e = eligibility(order, item);
     if (!e.exchange_eligible) {
       ctx.emitTrace({ type: "guardrail", rule: "exchange_policy", detail: `${item.title}: ${e.reason}` });
-      s.handoffOfferDue = `${item.title} (${order.orderId}) isn't eligible for an exchange: ${e.reason}`;
-      return fail(`Not eligible for exchange: ${e.reason}`, undefined, { offer_handoff: true });
+      const no = policyNo(ctx, order, item, e, "exchange");
+      return fail(`Not eligible for exchange: ${e.reason}`, undefined, { decision: no.decision, offer_handoff: true });
     }
     const nb = resolveBook(input.new_book_id);
     if (!nb) return fail("Unknown new_book_id. Use search_catalog first.");

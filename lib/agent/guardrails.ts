@@ -20,7 +20,7 @@ export const LIMITS = {
   warnBeforeLimit: 2,
   maxToolIterations: 5,
   rateLimitWindowMs: 60_000,
-  rateLimitMax: 10,
+  rateLimitMax: 20,
   frustrationThreshold: 2,
   failureThreshold: 3,
 } as const;
@@ -70,13 +70,36 @@ export const wantsHumanText = (message: string) => HUMAN_PATTERNS.some((re) => r
 
 // ─── Handoff offer after a policy "no" ────────────────────────────────────────
 
-/** Appended when a reply to a policy "no" doesn't already offer a person. */
-export const HANDOFF_OFFER_LINE = "I can't make an exception, but a person on our team can take a look. Want me to bring someone in?";
+/** Appended when a reply to a policy "no" doesn't already offer a human review by phone. */
+export const HANDOFF_OFFER_LINE =
+  "I can't make an exception myself, but a person on our team can review it. If you'd like that, I'll take a phone number and they'll call you.";
 
-/** Does the reply already offer to connect the customer with a person? */
-const OFFER_RE =
-  /\b(?:bring (?:in )?(?:someone|somebody|a person|a colleague|a human|a team member)|bring (?:them|one) in|connect you (?:with|to)|hand (?:this|you) (?:over|off)|put you (?:through|in touch)|(?:person|human|colleague|someone|somebody|team member|people on our team)[^.?!]{0,80}\?)/i;
-export const offersPerson = (reply: string) => OFFER_RE.test(reply);
+/** Does the reply already offer a human review by phone? A vague "I could bring someone in" isn't enough. */
+export const offersPerson = (reply: string) => /\bphone\b|\bcall you\b|\bgive you a call\b/i.test(reply);
+
+/** Does the reply state the "no" plainly, with the policy number behind it? */
+export const statesDecision = (reply: string) =>
+  /\b(?:can['’]?t|cannot|isn['’]?t eligible|not eligible|unable to|not able to|won['’]?t be able to|outside (?:of )?(?:our|the))\b/i.test(reply) && /\b30\b/.test(reply);
+
+/** A phone number in a message: 7 to 15 digits, allowing spaces, dots, dashes, and parentheses. */
+export function extractPhone(message: string): string | null {
+  for (const m of message.matchAll(/\+?\(?\d[\d\s().-]{5,}\d/g)) {
+    const digits = m[0].replace(/\D/g, "");
+    if (digits.length >= 7 && digits.length <= 15) return m[0].trim();
+  }
+  return null;
+}
+
+/** "never mind", "no thanks": the customer changed their mind about the callback. */
+export const declinesCallback = (message: string) => /^\W*(?:no|nope|nah|never ?mind|cancel|forget it|not now|actually,? no|no thanks?|that'?s ok(?:ay)?)\b/i.test(message.trim());
+
+/** Mask phone numbers (10 to 15 digits) to their last four, for the trace. */
+export function maskPhones(text: string): string {
+  return text.replace(/\+?\(?\d[\d\s().-]{8,}\d/g, (m) => {
+    const digits = m.replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 15 ? `***-***-${digits.slice(-4)}` : m;
+  });
+}
 
 /**
  * A plain yes to the offer ("yes", "yes please", "sure", "ok"). Short, and nothing that hedges or

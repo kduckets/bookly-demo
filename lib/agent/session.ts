@@ -16,6 +16,14 @@ export interface PendingPreview {
   summary: string;
 }
 
+/** A policy "no": what it was about, and the plain-language decision. */
+export interface PolicyNo {
+  /** e.g. "God Bless You, Mr. Rosewater (BK-0977)" */
+  subject: string;
+  /** One clear sentence: what can't happen, and why. */
+  decision: string;
+}
+
 export interface Session {
   id: string;
   shopperId: string;
@@ -47,10 +55,14 @@ export interface Session {
   ticketId?: string;
   /** What happened this session, in plain words, for the handoff summary. */
   actions: string[];
-  /** A policy "no" happened this turn: the reply must offer a person. Set by tools, consumed by the loop. */
-  handoffOfferDue?: string;
-  /** The offer made on the last reply; a plain "yes" to it hands off on the next message. */
-  pendingHandoffOffer?: { reason: string; turn: number };
+  /** A policy "no" happened this turn: the reply must state it plainly and offer a human review. Set by tools, consumed by the loop. */
+  handoffOfferDue?: PolicyNo;
+  /** The review offer made on the last reply; a plain "yes" to it starts the callback flow. */
+  pendingHandoffOffer?: PolicyNo & { turn: number };
+  /** The customer accepted a review; we're waiting for a phone number. */
+  awaitingCallback?: PolicyNo & { tries: number };
+  /** The callback number the customer gave (kept server-side; shown only as its last four digits). */
+  callbackPhone?: string;
   /** Reader requests added in this conversation (capped to prevent spam). */
   requestsAdded: number;
   messageTimes: number[];

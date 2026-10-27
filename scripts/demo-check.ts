@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { CATALOG } from "../data/catalog";
 import { handleTurn } from "../lib/agent/loop";
 import { resetDemo } from "../lib/demo-reset";
+import { offersPerson } from "../lib/agent/guardrails";
 import type { StreamEvent, TraceEvent, UIEvent } from "../lib/types";
 
 for (const f of [".env.local", ".env"]) if (fs.existsSync(f)) process.loadEnvFile(f);
@@ -119,16 +120,24 @@ const STEPS: Step[] = [
     check: (t) => {
       if (!t.tools.some((x) => x.name === "check_return_eligibility" && x.input.includes("0977") && x.output.includes('"return_eligible":false'))) return `no eligibility check on BK-0977; tools=${t.tools.map((x) => `${x.name}:${x.ok}`)}`;
       if (ui(t, "confirmation", (u) => (u as { stage: string }).stage === "done")) return "a return was created";
-      if (!/30/.test(t.text)) return "didn't cite the 30-day policy";
-      if (!t.trace.some((x) => x.type === "guardrail" && x.rule === "handoff_offered")) return "no handoff offer recorded";
-      return /bring|person|colleague|someone|team/i.test(t.text) ? true : "reply doesn't offer a person";
+      if (!ui(t, "policy_decision")) return "no decision card";
+      if (!/can['’]?t be returned|cannot be returned|outside (?:our|the) 30/i.test(t.text) || !/30/.test(t.text)) return "the no isn't stated plainly with the 30-day policy";
+      return offersPerson(t.text) ? true : "no human review by phone offered";
     },
   },
   {
-    id: "10. yes, please → handoff", act: 2, say: "Yes, please",
+    id: "10. yes, please → asks for a phone number", act: 2, say: "Yes, please",
+    check: (t) => {
+      if (ui(t, "handoff")) return "handed off before getting a number";
+      return /phone number/i.test(t.text) ? true : `didn't ask for a number: "${t.text.slice(0, 90)}"`;
+    },
+  },
+  {
+    id: "11. phone number → callback ticket", act: 2, say: "617-555-0142",
     check: (t, all) => {
-      const h = t.ui.find((u) => u.type === "handoff") as { summary: string } | undefined;
+      const h = t.ui.find((u) => u.type === "handoff") as { summary: string; eta: string } | undefined;
       if (!h) return "no handoff card";
+      if (!h.eta.includes("ending in 0142")) return "no callback on the card";
       if (!h.summary.includes("Breakfast of Champions")) return "summary misses the return";
       if (all.some((x) => x.ui.some((u) => u.type === "wanted_list_updated")) && !h.summary.includes("Solaris")) return "summary misses the Solaris request";
       return t.done?.locked ? true : "session not locked";
@@ -145,9 +154,9 @@ const VARIATIONS: { step: string; say: string }[] = [
   { step: "4. Solaris → not stocked, offer", say: "Is Solaris by Stanisław Lem in stock?" },
   { step: "6. return opener → asks order + email", say: "I want to send back a book I got on bookly.com" },
   { step: "9. Rosewater → kind no", say: "What about the Rosewater book I bought last month?" },
-  { step: "10. yes, please → handoff", say: "Sure" },
-  { step: "10. yes, please → handoff", say: "ok" },
-  { step: "10. yes, please → handoff", say: "Can I talk to a person?" },
+  { step: "10. yes, please → asks for a phone number", say: "Sure" },
+  { step: "10. yes, please → asks for a phone number", say: "Yes, please have a person review it." },
+  { step: "11. phone number → callback ticket", say: "(617) 555-0142" },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
@@ -172,7 +181,7 @@ async function runScript(steps: Step[]): Promise<{ results: Record<string, strin
     all.push(t);
     lastTurn = t.done?.turn ?? lastTurn;
     if (t.errors.length) results[step.id] = `error: ${t.errors[0]}`;
-    else if (t.done?.locked && !step.id.startsWith("10")) results[step.id] = "session locked early";
+    else if (t.done?.locked && !step.id.startsWith("11")) results[step.id] = "session locked early";
     else results[step.id] = step.check(t, all);
   }
   return { results, turns: lastTurn };

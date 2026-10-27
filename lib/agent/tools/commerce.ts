@@ -92,7 +92,7 @@ export const checkout = defineTool({
       placedAt: new Date().toISOString(),
       estimatedDelivery: new Date(Date.now() + (input.shipping_method === "expedited" ? 2 : 5) * 86_400_000).toISOString(),
       shippingMethod: allDigital ? ("digital" as const) : input.shipping_method,
-      purchasedAt: "Ice-Nine Bookshop" as const,
+      purchasedAt: "Ice-Nine Books" as const,
       items: cart.items.map((i, n) => ({ itemId: `${orderId.slice(3)}-${n + 1}`, bookId: i.bookId, title: i.title, kind: "book" as const, format: i.format, quantity: i.quantity, price: i.unitPrice })),
       total,
     };

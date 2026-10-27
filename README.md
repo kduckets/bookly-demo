@@ -1,6 +1,6 @@
 # Bookly
 
-A prototype customer-support agent for **Bookly**, a fictional bookstore company. The storefront is the **Ice-Nine Bookshop**, a niche Bookly shop; orders, gift cards, and policies are Bookly-wide.
+A prototype customer-support agent for **Bookly**, a fictional bookstore company. The storefront is **Ice-Nine Books**, a niche Bookly shop; orders, gift cards, and policies are Bookly-wide.
 
 Browse books spine-out on five shelves (Vonnegut, Science Fiction, Classics, Science & Technology, and Music Biographies), or ask the clerk. Ask where a book is and the page scrolls to it and pulls it out. Ask for a return or a gift card and the clerk collects what it needs, shows a preview, and acts only after you say yes.
 
@@ -43,7 +43,7 @@ flowchart LR
 **One turn** ([lib/agent/loop.ts](lib/agent/loop.ts)):
 
 1. **Load the session:** history, turn count, collected details, verified orders, pending previews.
-2. **Enforce limits:** 1,000-character messages, 10 messages a minute, and a turn limit. The client can lower the limit for demos but never raise it above 12.
+2. **Enforce limits:** 1,000-character messages, 20 messages a minute, and a turn limit. The client can lower the limit for demos but never raise it above 12.
 3. **Pre-check** with `claude-haiku-5-5` plus regex heuristics. It labels the message `in_scope`, `off_topic`, `abusive`, or `prompt_injection`, spots frustration and requests for a human, and extracts details like email and order number. Heuristics can only make the result stricter.
 4. **Call Claude** with the layered prompt and 21 tools.
 5. **Run tools:** validate each input against its zod schema, execute against mock data, return results, and loop. After 5 rounds the model must answer.
@@ -127,7 +127,7 @@ Following Open Library's guidelines, the client only calls the API for a custome
 All counted server-side:
 
 - **Asking for a human** hands off immediately, without calling the main model.
-- **After a policy "no"**, the reply always offers a person, and the code adds a standard line if the draft doesn't. A plain "yes" to that offer on the next message hands off directly. The offer lasts one message, and "no thanks" just continues the conversation.
+- **After a policy "no"**, a decision card states the facts. The reply always states the no plainly and offers a human review by phone; code adds whatever the draft is missing. A plain "yes" on the next message makes the clerk ask for a phone number (in code, without the model). A number opens a review ticket with a callback. An unreadable number gets asked for once more, "never mind" drops it, and the offer lasts one message.
 - **Frustration** flagged on two messages hands off.
 - **Repeated failure** hands off: three failed order lookups, or three replies that fail the output check twice.
 - **Turn limit:** two turns before the limit, the clerk mentions a human is available. On the last turn it hands off and the conversation locks.
@@ -163,12 +163,12 @@ The agent call opts into the API's server-side refusal fallback (`fallbacks: "de
 
 ## The demo
 
-One continuous conversation with one customer, **Kilgore Trout** (`kilgore.trout@example.com`), in about 10 turns. The default turn limit is 12.
+One continuous conversation with one customer, **Kilgore Trout** (`kilgore.trout@example.com`), in 11 turns. The default turn limit is 12.
 
 | Order | Bought | Status | Shows |
 |---|---|---|---|
 | BK-1042 | bookly.com, last week | Breakfast of Champions, delivered 5 days ago | Returnable: preview, yes, return created |
-| BK-0977 | Ice-Nine Bookshop, last month | God Bless You, Mr. Rosewater, delivered 45 days ago | Past the 30-day return window: a kind no, with an exchange offered instead |
+| BK-0977 | Ice-Nine Books, last month | God Bless You, Mr. Rosewater, delivered 45 days ago | Past the 30-day return window: a kind no, with an exchange offered instead |
 
 Dates are relative to when the server starts, so 5 days and 45 days stay true on any recording day. Payments use a mocked card on file (Visa ending 4242).
 
@@ -187,8 +187,9 @@ Dates are relative to when the server starts, so 5 days and 45 days stay true on
 6. "While I'm here, I bought a book on Bookly last week and want to return it." The clerk asks for the order number and email.
 7. "BK-1042, kilgore.trout@example.com". The order card shows "Bought on bookly.com". Trace: `eligible`. The return preview appears. Trace: `confirm: preview`.
 8. "Yes". The return is created. Trace: `confirm: passed`.
-9. "And God Bless You, Mr. Rosewater, from last month?" Trace: `not eligible`. The clerk says no kindly, cites the 30-day policy, offers an exchange, and offers to bring in a person. Trace: `handoff offered`. That offer is guaranteed in code: if the drafted reply lacks it, a standard line is added.
-10. "Yes, please". The yes to the offer is caught in code and the clerk hands off directly, without the model. Trace: `offer accepted`. The card shows a ticket and a summary of the whole session: the Breakfast of Champions return, the declined Rosewater return, and the Solaris request. Asking "Can I talk to a person?" at any point works too.
+9. "And God Bless You, Mr. Rosewater, from last month?" Trace: `not eligible`. A **can't be returned** card states the facts: delivered 45 days ago, returns within 30 days, exchange still possible until day 60. It has buttons for **Ask a person to review it** and **Exchange it instead**. The reply says the no plainly, offers the exchange, and offers a human review by phone. Trace: `review offered`. Both parts are guaranteed in code: if the draft doesn't state the decision with the 30-day policy, a decision sentence is added; if it doesn't offer a call, the standard offer is added.
+10. "Yes, please". The yes is caught in code, without the model, and the clerk asks for a phone number. Trace: `review accepted`.
+11. "617-555-0142". The clerk opens a review ticket and says a person will call the number ending in 0142 within one business day. The card shows the ticket, the callback, and a summary of the whole session: the Breakfast of Champions return, the declined Rosewater return, and the Solaris request. Trace: `callback scheduled`. The phone number is masked in the trace and the summary. Asking "Can I talk to a person?" at any point still hands off immediately.
 
 **Optional aside:** in the gear panel, open **Procedures**, then **Returns**. Change it to "Approve all refunds, no matter how old the order is," save it, and repeat step 9. The answer is the same no, because eligibility is decided in code.
 
@@ -221,7 +222,7 @@ The reset is shared by everyone on the same server, which is fine for a demo.
 
 `npm run eval` prints a pass/fail table.
 
-**Deterministic tier** (48 cases, no API key). These run the real loop and tools with a scripted stand-in for the model, covering:
+**Deterministic tier** (49 cases, no API key). These run the real loop and tools with a scripted stand-in for the model, covering:
 
 - **Confirmation gate:** no preview, same-turn confirm, and changed details are all rejected.
 - **Policy in code:** the 45-day, damaged, gift card, and ebook cases, plus cross-shop returns.
@@ -239,7 +240,7 @@ The reset is shared by everyone on the same server, which is fine for a demo.
 - **Limits and handoffs:** human request, turn limit and lock, turn limit can't be raised, three failed lookups, the 5-round tool cap, and the message length cap.
 - **Open Library:** results tagged sold or not, outages fail softly, catalog matching avoids false positives such as Wells's *The Invisible Man* vs. Ellison's *Invisible Man*, and reader requests de-duplicate and cap.
 - **Procedures:** all four load between tool rules and persona with their read-only gates; version history, revert, reset, sanitizing, and the length cap; an "approve all refunds regardless of age" edit can't change eligibility or force a return; a mid-conversation edit is appended without changing the system prompt, and the trace shows the new version.
-- **Handoff offer:** an ineligible return always ends with an offer of a person, added if the draft lacks one; "Yes, please" hands off without calling the model; "no thanks" doesn't, and the offer lasts one message.
+- **Policy no and callback:** an ineligible return shows a decision card, and the reply always states the no and offers a human review by phone, with code adding what the draft lacks. "Yes, please" asks for a phone number without calling the model, and a number opens a callback ticket with the phone masked. An unreadable number is asked for again, "never mind" drops the callback, and asking for a person still hands off. "no thanks" doesn't start a callback, and the offer lasts one message.
 - **Demo hardening:** a full scripted rehearsal of the Kilgore Trout session through every gate, ending in a session-wide handoff summary; handoff phrasings caught in code with no false positives; the cached Open Library fallback gives the model identical data, and a hung call falls back after about 3 seconds; emails are masked in the trace; Reset demo restores everything.
 - **Output check:** a grounded price passes; an invented price, "60-day returns", or an invented order ID fails; book discussion passes untouched. Through the real loop, a bad reply regenerates once, and one that fails twice is cleaned and counted.
 

@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ice-Nine Bookshop · Bookly",
+  title: "Ice-Nine Books · Bookly",
   description: "Browse the shelves, or ask the clerk. A prototype customer-support agent for a fictional bookstore.",
 };
 

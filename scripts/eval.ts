@@ -17,7 +17,7 @@ import { CATALOG, getBook } from "../data/catalog";
 import { createSession, getSession, deleteSession } from "../lib/agent/session";
 import { buildSystemPrompt, DEFAULT_PERSONA } from "../lib/agent/prompts";
 import { PROCEDURE_IDS, PROCEDURES_NOTE, getProcedure, proceduresBlock, resetProcedure, revertProcedure, saveProcedure } from "../lib/agent/procedures";
-import { HANDOFF_OFFER_LINE, acceptsHandoffOffer, offersPerson, sanitizePersona, wantsHumanText } from "../lib/agent/guardrails";
+import { HANDOFF_OFFER_LINE, acceptsHandoffOffer, extractPhone, offersPerson, sanitizePersona, wantsHumanText } from "../lib/agent/guardrails";
 import { resetDemo } from "../lib/demo-reset";
 import { allOrders } from "../data/orders";
 import { cartView } from "../lib/agent/session";
@@ -453,7 +453,7 @@ det("cross-shop: a bookly.com order is visible and returnable from Ice-Nine; pol
   const gc = await executeTool("get_policy", { topic: "gift_cards" }, ctx);
   const ret = await executeTool("get_policy", { topic: "returns" }, ctx);
   const shopOk = (look.data as { purchased_at: string }).purchased_at === "bookly.com";
-  const policyOk = [gc, ret].every((p) => JSON.stringify(p.data).includes("Ice-Nine Bookshop"));
+  const policyOk = [gc, ret].every((p) => JSON.stringify(p.data).includes("Ice-Nine Books"));
   return shopOk && preview.ok && policyOk ? true : JSON.stringify({ shopOk, preview: preview.data, policyOk });
 });
 
@@ -694,11 +694,11 @@ det("demo rehearsal: the full Kilgore Trout session runs through every gate and 
     for (const m of [
       "Where's the Vonnegut book about the war?", "Slaughterhouse-Five", "What should I read next?", "Do you have Solaris?", "Yes",
       "While I'm here, I bought a book on Bookly last week and want to return it.", "BK-1042, kilgore.trout@example.com", "Yes",
-      "And God Bless You, Mr. Rosewater, from last month?", "Yes, please",
+      "And God Bless You, Mr. Rosewater, from last month?", "Yes, please", "617-555-0142",
     ]) t.push(await say(id, m));
     const has = (r: TurnResult, type: string, pred: (u: UIEvent) => boolean = () => true) => r.ui.some((u) => u.type === type && pred(u));
     const traceHas = (r: TurnResult, rule: string, start: string) => r.trace.some((x) => x.type === "guardrail" && x.rule === rule && x.detail.startsWith(start));
-    const handoff = t[9].ui.find((u) => u.type === "handoff") as { summary: string } | undefined;
+    const handoff = t[10].ui.find((u) => u.type === "handoff") as { summary: string; eta: string } | undefined;
     const steps: [string, boolean][] = [
       ["1 war: ambiguous, nothing highlighted", t[0].trace.some((x) => x.type === "match" && x.verdict === "ambiguous") && !has(t[0], "highlight_book")],
       ["2 Slaughterhouse-Five highlighted", has(t[1], "highlight_book", (u) => (u as { bookId: string }).bookId === "kv-slaughterhouse-five")],
@@ -707,10 +707,10 @@ det("demo rehearsal: the full Kilgore Trout session runs through every gate and 
       ["5 request added", has(t[4], "wanted_list_updated")],
       ["7 eligible + preview", has(t[6], "confirmation", (u) => (u as { stage: string }).stage === "preview")],
       ["8 return created", has(t[7], "confirmation", (u) => (u as { stage: string }).stage === "done") && traceHas(t[7], "confirm_gate", "initiate_return: passed")],
-      ["9 Rosewater picked from the message, not eligible, person offered", traceHas(t[8], "disambiguation_gate", "passed") && t[8].tools.some((x) => x.name === "check_return_eligibility" && x.output.includes('"return_eligible":false')) && traceHas(t[8], "handoff_offered", "")],
-      ["10 'Yes, please' accepted the offer", traceHas(t[9], "handoff_accepted", "")],
-      ["10 handoff summary covers the session", !!handoff && handoff.summary.includes("Breakfast of Champions") && handoff.summary.includes("Solaris") && !!t[9].done?.locked],
-      ["within the turn limit", (t[9].done?.turn ?? 99) <= 12],
+      ["9 Rosewater picked from the message, not eligible, decision card + review offered", traceHas(t[8], "disambiguation_gate", "passed") && t[8].tools.some((x) => x.name === "check_return_eligibility" && x.output.includes('"return_eligible":false')) && traceHas(t[8], "handoff_offered", "")],
+      ["10 'Yes, please' asks for a phone number", traceHas(t[9], "handoff_accepted", "") && /phone number/i.test(t[9].text)],
+      ["11 callback ticket covers the session", !!handoff && handoff.eta.includes("ending in 0142") && handoff.summary.includes("Breakfast of Champions") && handoff.summary.includes("Solaris") && handoff.summary.includes("Rosewater") && !!t[10].done?.locked],
+      ["within the turn limit", (t[10].done?.turn ?? 99) <= 12],
     ];
     const bad = steps.filter(([, ok]) => !ok).map(([n]) => n);
     return bad.length ? `failed: ${bad.join(" | ")}${handoff ? ` · summary: ${handoff.summary}` : ""}` : true;
@@ -755,41 +755,98 @@ const declineTurn = async (reply: string) => {
 };
 const offered = (r: TurnResult) => r.trace.find((t) => t.type === "guardrail" && t.rule === "handoff_offered") as { detail: string } | undefined;
 
-det("handoff offer: an ineligible return always ends with an offer of a person (added if the draft lacks one)", async () => {
-  const plain = await declineTurn("I'm sorry. That one is outside our 30-day return window. I can offer an exchange instead.");
-  const already = await declineTurn("I'm sorry, that's outside our 30-day window. Want me to bring in a colleague to take a look?");
-  const flagged = plain.r.tools.find((t) => t.name === "check_return_eligibility")?.output.includes('"offer_handoff":true');
-  const ok =
-    flagged &&
-    plain.r.text.endsWith(HANDOFF_OFFER_LINE) && offered(plain.r)?.detail.includes("appended") &&
-    !already.r.text.includes(HANDOFF_OFFER_LINE) && offered(already.r)?.detail.includes("in the reply");
-  return ok ? true : JSON.stringify({ flagged, plain: plain.r.text, plainTrace: offered(plain.r), already: offered(already.r) });
+det("policy no: the reply always states the decision and offers a human review by phone; a decision card shows the facts", async () => {
+  const vague = await declineTurn("That's a tricky one. I can offer an exchange instead.");
+  const clearNoPhone = await declineTurn("I'm sorry. That one is outside our 30-day return window. I can offer an exchange instead.");
+  const complete = await declineTurn("I can't return that one: it's past our 30-day window. A person on our team can review it and call you, if you'd like.");
+  const card = vague.r.ui.find((u) => u.type === "policy_decision") as { title: string; lines: string[]; actions: { label: string }[] } | undefined;
+  const checks = {
+    flagged: !!vague.r.tools.find((t) => t.name === "check_return_eligibility")?.output.includes('"offer_handoff":true'),
+    card: !!card && card.title.includes("can't be returned") && card.lines.some((l) => l.includes("45 days")) && card.lines.some((l) => l.includes("30 days")) && card.actions.some((a) => a.label.includes("review")),
+    vagueGetsBoth: vague.r.text.startsWith("God Bless You, Mr. Rosewater can't be returned.") && vague.r.text.endsWith(HANDOFF_OFFER_LINE),
+    clearGetsOfferOnly: !clearNoPhone.r.text.startsWith("God Bless You") && clearNoPhone.r.text.endsWith(HANDOFF_OFFER_LINE),
+    completeUntouched: !complete.r.text.includes(HANDOFF_OFFER_LINE) && !complete.r.text.startsWith("God Bless You") && offered(complete.r)?.detail.includes("were in the reply"),
+  };
+  const bad = Object.entries(checks).filter(([, ok]) => !ok).map(([k]) => k);
+  return bad.length ? `failed: ${bad.join(", ")} · vague="${vague.r.text}"` : true;
 });
 
-det("handoff offer: 'Yes, please' to the offer hands off in code, without calling the model", async () => {
-  const { id, r, fake } = await declineTurn("That's outside the window, I'm afraid.");
+det("callback: 'Yes, please' asks for a phone number (in code); a number opens the review ticket with a callback", async () => {
+  const { id, fake } = await declineTurn("That's outside the 30-day window, I'm afraid.");
   const callsBefore = fake.calls;
   const yes = await say(id, "Yes, please");
-  const ok = offered(r) && yes.ui.some((u) => u.type === "handoff") && fake.calls === callsBefore && yes.trace.some((t) => t.type === "guardrail" && t.rule === "handoff_accepted");
-  return ok ? true : `handoff=${yes.ui.some((u) => u.type === "handoff")} modelCalls=${fake.calls - callsBefore}`;
+  const asked = /phone number/i.test(yes.text) && !yes.ui.some((u) => u.type === "handoff") && yes.trace.some((t) => t.type === "guardrail" && t.rule === "handoff_accepted");
+  const call = await say(id, "617-555-0142");
+  const card = call.ui.find((u) => u.type === "handoff") as { eta: string; summary: string } | undefined;
+  const masked = !JSON.stringify(call.trace).includes("617-555-0142") && !(card?.summary ?? "").includes("617-555-0142");
+  const ok = asked && fake.calls === callsBefore && !!card && card.eta.includes("ending in 0142") && card.summary.includes("Human review requested") && /call you at the number ending in 0142/.test(call.text) && call.done?.locked && masked;
+  return ok ? true : JSON.stringify({ asked, modelCalls: fake.calls - callsBefore, card, text: call.text, masked });
 });
 
-det("handoff offer: 'no thanks' doesn't hand off, and a later plain 'yes' doesn't either (the offer lasts one message)", async () => {
+det("callback: an unreadable number is asked for once more; 'never mind' drops it; asking for a person still hands off", async () => {
+  const a = await declineTurn("That's outside the 30-day window.");
+  await say(a.id, "Yes, please");
+  const bad = await say(a.id, "it's 555");
+  const reasked = /area code/i.test(bad.text) && !bad.ui.some((u) => u.type === "handoff");
+  const b = await declineTurn("That's outside the 30-day window.");
+  await say(b.id, "sure");
+  const before = b.fake.calls;
+  const nevermind = await say(b.id, "never mind");
+  const dropped = !nevermind.ui.some((u) => u.type === "handoff") && b.fake.calls > before;
+  const c = await declineTurn("That's outside the 30-day window.");
+  await say(c.id, "ok");
+  const person = await say(c.id, "Can I just talk to a person now?");
+  const handedOff = person.ui.some((u) => u.type === "handoff");
+  return reasked && dropped && handedOff ? true : JSON.stringify({ reasked, dropped, handedOff });
+});
+
+det("handoff offer: 'no thanks' doesn't start a callback, and a later plain 'yes' doesn't either (the offer lasts one message)", async () => {
   const { id, fake } = await declineTurn("That's outside the window, I'm afraid.");
   const before = fake.calls;
   const no = await say(id, "No thanks");
   const later = await say(id, "yes");
-  const ok = !no.ui.some((u) => u.type === "handoff") && fake.calls > before && !later.ui.some((u) => u.type === "handoff");
-  return ok ? true : `noHandedOff=${no.ui.some((u) => u.type === "handoff")} laterHandedOff=${later.ui.some((u) => u.type === "handoff")}`;
+  const ok = !/phone number/i.test(no.text) && fake.calls > before && !/phone number/i.test(later.text) && !later.ui.some((u) => u.type === "handoff");
+  return ok ? true : `no="${no.text}" later="${later.text}"`;
 });
 
-det("handoff offer: yes-detection and offer-detection phrasings", async () => {
-  const yes = ["yes", "Yes, please", "sure", "ok", "Yeah", "please do", "go ahead", "sounds good", "I'd like that"];
+det("handoff offer: yes-detection, offer-detection, and phone parsing", async () => {
+  const yes = ["yes", "Yes, please", "sure", "ok", "Yeah", "please do", "go ahead", "sounds good", "I'd like that", "Yes, please have a person review it."];
   const no = ["no thanks", "yes, but can I exchange it instead?", "not now", "nah", "ok what about Dune", "maybe later"];
   const missed = yes.filter((m) => !acceptsHandoffOffer(m));
   const wrong = no.filter((m) => acceptsHandoffOffer(m));
-  const offerMissed = [HANDOFF_OFFER_LINE, "I can offer an exchange, or bring in a colleague.", "Want me to connect you with someone on our team?"].filter((x) => !offersPerson(x));
-  return missed.length || wrong.length || offerMissed.length ? JSON.stringify({ missed, wrong, offerMissed }) : true;
+  const offers = [HANDOFF_OFFER_LINE, "Want me to have someone give you a call?", "A person can call you to review it."].filter((x) => !offersPerson(x));
+  const vague = ["I can offer an exchange, or bring in a colleague."].filter((x) => offersPerson(x));
+  const phones = ["617-555-0142", "(617) 555-0142", "+1 617 555 0142", "6175550142"].filter((p) => !extractPhone(p));
+  const notPhones = ["BK-0977", "it's 555", "the 30-day window"].filter((p) => extractPhone(p));
+  const all = { missed, wrong, offers, vague, phones, notPhones };
+  return Object.values(all).some((v) => v.length) ? JSON.stringify(all) : true;
+});
+
+det("replies: the model's working note between tool calls never reaches the customer", async () => {
+  process.env.BOOKLY_PRECHECK = "heuristic";
+  fakeModel([
+    { text: "Different order, so list by email.", tools: [{ name: "search_catalog", input: { query: "Dune" } }] },
+    { text: "Dune is on Aisle 2." },
+  ]);
+  const r = await say(ids(), "Do you have Dune?");
+  return !r.text.includes("Different order") && r.text.includes("Aisle 2") ? true : `text="${r.text}"`;
+});
+
+det("recommendations: 'what should I read next?' with a book found must look up the catalog, not point at cards on screen", async () => {
+  process.env.BOOKLY_PRECHECK = "heuristic";
+  fakeModel([
+    { tools: [{ name: "find_on_shelf", input: { book_id: "kv-slaughterhouse-five" } }] },
+    { text: "It's in Aisle 1." },
+    { text: "If you've already read it, the three cards on screen are my first guesses." },
+    { tools: [{ name: "recommend", input: { seed_book_ids: ["kv-slaughterhouse-five"] } }] },
+    { text: "From our shelves: Mother Night and Catch-22." },
+  ]);
+  const id = ids();
+  await say(id, "Slaughterhouse-Five");
+  const r = await say(id, "What should I read next?");
+  const checks = r.trace.filter((t) => t.type === "output_check") as { passed: boolean }[];
+  const ok = checks.length === 2 && !checks[0].passed && checks[1].passed && called(r, "recommend") && !r.text.includes("cards on screen");
+  return ok ? true : JSON.stringify({ checks: checks.map((c) => c.passed), text: r.text });
 });
 
 // ─── Procedures (layer 4) ─────────────────────────────────────────────────────

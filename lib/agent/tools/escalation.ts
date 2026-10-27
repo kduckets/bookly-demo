@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Session } from "../session";
 import { defineTool, ok, type ToolContext } from "./types";
 import { maskEmail, shortId } from "./util";
+import { maskPhones } from "../guardrails";
 
 export const HANDOFF_ETA = "A Bookly team member will reply by email within 2 business hours (Mon–Sat, 8am–8pm ET).";
 
@@ -14,15 +15,15 @@ export function summaryFromSession(s: Session, reason: string): string {
   if (s.verifiedOrderIds.length) known.push(`verified orders ${s.verifiedOrderIds.join(", ")}`);
   if (known.length) parts.push(`Known: ${known.join("; ")}.`);
   const lastAsk = [...s.transcript].reverse().find((t) => t.role === "user")?.text;
-  if (lastAsk) parts.push(`Latest message: “${lastAsk.slice(0, 120)}”.`);
+  if (lastAsk) parts.push(`Latest message: “${maskPhones(lastAsk).slice(0, 120)}”.`);
   return parts.join(" ");
 }
 
-export function openTicket(ctx: Pick<ToolContext, "session" | "emitUI">, reason: string, summary: string) {
+export function openTicket(ctx: Pick<ToolContext, "session" | "emitUI">, reason: string, summary: string, eta = HANDOFF_ETA) {
   const ticketId = ctx.session.ticketId ?? shortId("BKLY");
   ctx.session.ticketId = ticketId;
-  ctx.emitUI({ type: "handoff", ticketId, summary, eta: HANDOFF_ETA, reason });
-  return { ticket_id: ticketId, expected_response: HANDOFF_ETA };
+  ctx.emitUI({ type: "handoff", ticketId, summary, eta, reason });
+  return { ticket_id: ticketId, expected_response: eta };
 }
 
 export const escalateToHuman = defineTool({

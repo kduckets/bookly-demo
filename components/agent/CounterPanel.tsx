@@ -41,12 +41,12 @@ export function CounterPanel() {
 
   return (
     <aside
-      aria-label="Conversation with the Ice-Nine Bookshop clerk"
+      aria-label="Conversation with the Ice-Nine Books clerk"
       className="slide-in-right fixed inset-x-0 bottom-0 top-[var(--header-h)] z-40 flex flex-col border-l border-stone-200 bg-white md:left-auto md:w-[var(--panel-w)]"
     >
       <header className="flex items-center justify-between gap-2 border-b border-stone-200 px-5 py-3">
         <div>
-          <h2 className="font-semibold">Ice-Nine Bookshop</h2>
+          <h2 className="font-semibold">Ice-Nine Books</h2>
           <p className="text-xs text-stone-500">AI clerk · a Bookly shop · {turn.turn}/{turn.limit} messages</p>
         </div>
         <div className="flex items-center gap-1 text-stone-400">

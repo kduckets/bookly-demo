@@ -82,7 +82,7 @@ export interface BookSummary {
   location: string;
 }
 
-export type Storefront = "bookly.com" | "Ice-Nine Bookshop";
+export type Storefront = "bookly.com" | "Ice-Nine Books";
 
 export interface OrderView {
   orderId: string;
@@ -141,6 +141,8 @@ export type UIEvent =
       reference?: string;
     }
   | { type: "handoff"; ticketId: string; summary: string; eta: string; reason: string }
+  /** A policy "no", stated plainly, with the next steps the customer can take. */
+  | { type: "policy_decision"; title: string; lines: string[]; actions: { label: string; prompt: string }[] }
   | { type: "session_locked"; reason: string }
   | { type: "external_books"; source: "open_library"; books: ExternalBook[] }
   | { type: "wanted_list_updated"; item: WantedItem; added: boolean };
