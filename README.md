@@ -6,7 +6,7 @@ Browse books spine-out on five shelves, or ask the clerk. Ask where a book is an
 
 The agent loop is hand-written against the Anthropic Messages API. No agent frameworks.
 
-**Live:** https://bookly-demo-roan.vercel.app
+**Live:** https://bookly-ice-nine-demo.vercel.app
 
 ## Thesis
 
