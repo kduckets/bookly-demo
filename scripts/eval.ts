@@ -849,6 +849,27 @@ det("recommendations: 'what should I read next?' with a book found must look up 
   return ok ? true : JSON.stringify({ checks: checks.map((c) => c.passed), text: r.text });
 });
 
+det("Rosewater: after 'BK-1042, kilgore.trout@example.com', his Rosewater order is in view and the 45-day no comes straight back", async () => {
+  process.env.BOOKLY_PRECHECK = "heuristic";
+  resetOrders();
+  fakeModel([
+    { tools: [{ name: "lookup_order", input: { order_id: "BK-1042", email: "kilgore.trout@example.com" } }] },
+    { text: "Found BK-1042." },
+    { tools: [{ name: "check_return_eligibility", input: { order_id: "BK-0977", item_id: "0977-1" } }] },
+    { text: "I'm sorry, that one is outside our 30-day return window." },
+  ]);
+  const id = ids();
+  const t1 = await say(id, "BK-1042, kilgore.trout@example.com");
+  const lookup = t1.tools.find((t) => t.name === "lookup_order");
+  const inView = !!lookup?.output.includes("God Bless You, Mr. Rosewater") && lookup.output.includes("BK-0977");
+  const t2 = await say(id, "What about the Rosewater book I bought last month?");
+  const picked = t2.trace.some((t) => t.type === "guardrail" && t.rule === "disambiguation_pick" && t.detail.includes("BK-0977"));
+  const elig = t2.tools.find((t) => t.name === "check_return_eligibility");
+  const card = t2.ui.find((u) => u.type === "policy_decision") as { lines: string[] } | undefined;
+  const ok = inView && picked && elig?.ok && elig.output.includes('"return_eligible":false') && elig.output.includes('"delivered_days_ago":45') && !!card?.lines.some((l) => l.includes("45 days"));
+  return ok ? true : JSON.stringify({ inView, picked, elig: elig?.output.slice(0, 160), card });
+});
+
 // ─── Procedures (layer 4) ─────────────────────────────────────────────────────
 
 det("procedures: all four load into the prompt between tool rules and persona, with read-only gates", async () => {

@@ -109,12 +109,22 @@ export function resolveFromCustomer(s: Session, message: string): string[] {
   return picked;
 }
 
+const COMMON = new Set(["the", "and", "book", "books", "with", "from", "about", "your", "this", "that", "bless", "god", "great", "life", "time", "world", "night"]);
+/** Words in a title that are specific enough to identify it: 5+ letters, not common words. */
+function distinctiveWords(title: string): string[] {
+  return normalize(title).split(" ").filter((w) => w.length >= 5 && !COMMON.has(w));
+}
+
 /** Resolve one of the pending orders from a message: by an item title, a status, or a position. */
 function pickPendingOrder(s: Session, message: string): string | null {
   if (!s.pendingOrders.length) return null;
   const orders = s.pendingOrders.map((id) => allOrders().find((o) => o.orderId === id)).filter((o): o is Order => !!o);
   const named = new Set(titlesIn(message).map((b) => b.id));
-  const byItem = orders.filter((o) => o.items.some((it) => it.bookId && named.has(it.bookId)));
+  const byTitle = orders.filter((o) => o.items.some((it) => it.bookId && named.has(it.bookId)));
+  // A distinctive word from a title is enough ("the Rosewater book"), if it points at one order.
+  const words = new Set(normalize(message).split(" "));
+  const byWord = orders.filter((o) => o.items.some((it) => distinctiveWords(it.title).some((w) => words.has(w))));
+  const byItem = byTitle.length ? byTitle : byWord;
   const status = message.match(/\b(delivered|shipped|in transit|processing)\b/i)?.[1].toLowerCase().replace("in transit", "shipped");
   const byStatus = status ? orders.filter((o) => o.status === status) : [];
   const i = ordinalPick(message, orders.length);

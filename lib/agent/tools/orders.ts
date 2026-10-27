@@ -99,8 +99,16 @@ export const lookupOrder = defineTool({
     resolveOrder(s, order.orderId); // order number + email names the order exactly
     s.slots.order_id = order.orderId;
     s.slots.email = order.email;
+    // Order number + email proves it's this customer, so their other orders are theirs to ask about
+    // too ("And the Rosewater book from last month?"). Verify them, and make them pickable by name.
+    const others = allOrders().filter((o) => o.email === order.email && o.orderId !== order.orderId);
+    for (const o of others) if (!s.verifiedOrderIds.includes(o.orderId)) s.verifiedOrderIds.push(o.orderId);
+    s.pendingOrders = others.map((o) => o.orderId);
     ctx.emitUI({ type: "order_card", order: orderView(order) });
-    return ok(orderForModel(order));
+    return ok({
+      ...orderForModel(order),
+      other_orders_for_this_customer: others.map((o) => ({ order_id: o.orderId, status: o.status, delivered_days_ago: daysSince(o.deliveredAt), items: o.items.map((i) => ({ item_id: i.itemId, title: i.title })) })),
+    });
   },
 });
 
